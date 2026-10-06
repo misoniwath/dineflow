@@ -29,16 +29,18 @@ DineFlow is a web-based restaurant management system developed for CSCI 441 Soft
 
 ```text
 dineflow/
-├─ app/                         # Next.js app router pages and route handlers
-│  ├─ api/                     # API routes for backend endpoints
+├─ app/                       # Next.js app router pages and route handlers
+│  ├─ api/                    # API routes for backend endpoints
 │  ├─ layout.tsx              # Shared application layout / root wrapper
 │  └─ page.tsx                # Main landing or home page
-├─ components/                 # Reusable UI components (cards, forms, tables, buttons)
-├─ hooks/                      # Custom React hooks for shared logic and state handling
+├─ components/                # Reusable UI components (cards, forms, tables, buttons)
+├─ hooks/                     # Custom React hooks for shared logic and state handling
 ├─ lib/                       # Helper utilities, configuration, and app logic
 ├─ public/                    # Static assets such as images, logos, and icons
 ├─ server/                    # Server-side application logic and backend integrations
 │  ├─ db/                     # Database-related code, schema setup, and connection logic
+│  ├─ controllers/            # Controller logic used to route requests and responses
+│  ├─ middleware/             # Middleware logic
 │  └─ services/               # Business logic services for operations like orders or inventory
 ├─ styles/                    # Global styling rules and theme-related CSS files
 ├─ tests/                     # Automated tests for app behavior and validation
