@@ -1,18 +1,15 @@
 "use client";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useFloor } from "@/stores/FloorStore";
+import {
+  Reservation,
+  ReservationInput,
+  ReservationStatus,
+} from "@/types/Reservation";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
-
-export type ReservationStatus =
-  | "booked"
-  | "seated"
-  | "completed"
-  | "cancelled"
-  | "no-show";
-
 export const STATUS_LABEL: Record<ReservationStatus, string> = {
   booked: "Booked",
   seated: "Seated",
@@ -21,33 +18,12 @@ export const STATUS_LABEL: Record<ReservationStatus, string> = {
   "no-show": "No-show",
 };
 
-export type Reservation = {
-  id: string;
-  name: string;
-  phone: string;
-  party: number;
-  /** ISO date, YYYY-MM-DD (local) */
-  date: string;
-  /** 24h time, HH:mm */
-  time: string;
-  notes: string;
-  status: ReservationStatus;
-  /** Floor-plan table id, or null while unassigned */
-  tableId: string | null;
-};
-
-export type ReservationInput = Pick<
-  Reservation,
-  "name" | "phone" | "party" | "date" | "time" | "notes"
->;
-
 /** A table is held for this long around a booking before it can be reused. */
 const HOLD_MINUTES = 90;
 
 /* ------------------------------------------------------------------ */
 /* Date + time helpers                                                 */
 /* ------------------------------------------------------------------ */
-
 function toISO(d: Date) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -89,7 +65,6 @@ const isActive = (r: Reservation) =>
 /* ------------------------------------------------------------------ */
 /* Seed data (matches the seeded floor plan)                           */
 /* ------------------------------------------------------------------ */
-
 function makeSeed(today: string): Reservation[] {
   const tomorrow = addDays(today, 1);
   return [
@@ -165,7 +140,6 @@ function makeSeed(today: string): Reservation[] {
 /* ------------------------------------------------------------------ */
 /* Context                                                             */
 /* ------------------------------------------------------------------ */
-
 type ReservationContextValue = {
   reservations: Reservation[];
   addReservation: (input: ReservationInput) => Reservation;

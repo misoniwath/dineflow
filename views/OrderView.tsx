@@ -1,6 +1,11 @@
 "use client";
 import { useState } from "react";
 
+import { cn, money } from "@/lib/utils";
+
+import { MenuItem } from "@/types/MenuItem";
+import { Tickets } from "@/types/Tickets";
+
 import { Minus, Plus, Grid, CreditCard, ShoppingBag } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,15 +19,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
-
-type MenuItem = {
-  id: string;
-  name: string;
-  price: number;
-  image?: string;
-  desc?: string;
-};
+import MenuCardComponent from "@/components/MenuCardComponent";
 
 const menu: Record<string, MenuItem[]> = {
   Starters: [
@@ -61,104 +58,9 @@ const itemsById = Object.fromEntries(
     .map((item) => [item.id, item]),
 );
 
-const money = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
-
-// tableNumber -> { itemId -> quantity }
-type Tickets = Record<number, Record<string, number>>;
-
-/* ------------------------------------------------------------------ */
-/* Menu item card                                                      */
-/* ------------------------------------------------------------------ */
-
-function MenuCard({
-  item,
-  qty,
-  onChange,
-}: {
-  item: MenuItem;
-  qty: number;
-  onChange: (delta: number) => void;
-}) {
-  return (
-    <article
-      className={cn(
-        "group flex flex-col overflow-hidden rounded-xl border bg-card transition-colors",
-        qty > 0 && "border-primary/60",
-      )}
-    >
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted">
-        <img
-          src={item.image ?? "/images/placeholder.png"}
-          alt={item.name}
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-        />
-        <Badge className="absolute bottom-2 left-2 rounded-full bg-background/90 text-foreground tabular-nums backdrop-blur hover:bg-background/90">
-          {money.format(item.price)}
-        </Badge>
-        {qty > 0 && (
-          <Badge className="absolute right-2 top-2 rounded-full tabular-nums">
-            {qty} in order
-          </Badge>
-        )}
-      </div>
-
-      <div className="flex flex-1 flex-col gap-3 p-3">
-        <div className="space-y-1">
-          <h3 className="text-sm font-medium leading-snug">{item.name}</h3>
-          {item.desc && (
-            <p className="line-clamp-2 text-xs text-muted-foreground">
-              {item.desc}
-            </p>
-          )}
-        </div>
-
-        <div className="mt-auto">
-          {qty === 0 ? (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="w-full"
-              onClick={() => onChange(1)}
-              aria-label={`Add ${item.name}`}
-            >
-              <Plus className="mr-1.5 size-4" /> Add
-            </Button>
-          ) : (
-            <div className="flex items-center justify-between rounded-md border bg-background p-0.5">
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-8"
-                onClick={() => onChange(-1)}
-                aria-label={`Remove one ${item.name}`}
-              >
-                <Minus className="size-4" />
-              </Button>
-              <span className="text-sm font-medium tabular-nums">{qty}</span>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-8"
-                onClick={() => onChange(1)}
-                aria-label={`Add one ${item.name}`}
-              >
-                <Plus className="size-4" />
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-    </article>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /* Order view                                                          */
 /* ------------------------------------------------------------------ */
-
 export default function OrderView() {
   const [category, setCategory] = useState<string>(categories[0]);
   const [table, setTable] = useState<number>(4);
@@ -426,7 +328,8 @@ export default function OrderView() {
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {menu[c].map((item) => (
-                <MenuCard
+                <MenuCardComponent
+                  money={money}
                   key={item.id}
                   item={item}
                   qty={ticket[item.id] ?? 0}

@@ -1,26 +1,22 @@
 "use client";
-import { useMemo, useState, type ReactNode } from "react";
-import {
-  Check,
-  LayoutGrid,
-  List,
-  Pencil,
-  Plus,
-  Search,
-  Trash2,
-} from "lucide-react";
+import { useMemo, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from "@/components/ui/command";
+  InventoryItem,
+  ItemInput,
+  StockStatus,
+  FilterOption,
+} from "@/types/Inventory";
+import { STATUS_LABEL, getStatus, useInventory } from "@/stores/InventoryStore";
+
+import StatusBadgeComponent from "@/components/inventory/StatusBadgeComponent";
+import StockBarComponent from "@/components/inventory/StockBarComponent";
+import ExpiryCellComponent from "@/components/inventory/ExpiryCellComponent";
+import RowActionsComponent from "@/components/inventory/RowActionsComponent";
+import FilterPopoverComponent from "@/components/inventory/FilterPopoverComponent";
+import ItemFormComponent from "@/components/inventory/ItemFormComponent";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogClose,
@@ -30,20 +26,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -53,16 +37,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
-import {
-  STATUS_LABEL,
-  UNITS,
-  getStatus,
-  useInventory,
-  type InventoryItem,
-  type ItemInput,
-  type StockStatus,
-} from "@/stores/InventoryStore";
+import { LayoutGrid, List, Plus, Search } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /* Constants + helpers                                                 */
@@ -88,469 +63,10 @@ const statusDot: Record<StockStatus, string> = {
 
 const qtyFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const qty = (n: number, unit: string) => `${qtyFmt.format(n)} ${unit}`;
-const pctOf = (item: InventoryItem) =>
-  Math.max(0, Math.min(100, (item.onHand / item.par) * 100));
-
-function expiryInfo(iso: string | null) {
-  if (!iso) return null;
-  const [y, m, d] = iso.split("-").map(Number);
-  const target = Date.UTC(y, m - 1, d);
-  const now = new Date();
-  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-  const days = Math.round((target - today) / 86_400_000);
-  const label = new Date(target).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-  return { label, days };
-}
-
-/* ------------------------------------------------------------------ */
-/* Small display pieces                                                */
-/* ------------------------------------------------------------------ */
-
-function StatusBadge({ status }: { status: StockStatus }) {
-  return (
-    <Badge className={cn("rounded-full font-normal", statusBadge[status])}>
-      {STATUS_LABEL[status]}
-    </Badge>
-  );
-}
-
-function StockBar({
-  item,
-  className,
-}: {
-  item: InventoryItem;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn("h-1.5 overflow-hidden rounded-full bg-muted", className)}
-      role="progressbar"
-      aria-label={`${item.name} stock level`}
-      aria-valuemin={0}
-      aria-valuemax={item.par}
-      aria-valuenow={item.onHand}
-    >
-      <div
-        className={cn("h-full rounded-full", statusBar[getStatus(item)])}
-        style={{ width: `${pctOf(item)}%` }}
-      />
-    </div>
-  );
-}
-
-function ExpiryCell({ iso }: { iso: string | null }) {
-  const info = expiryInfo(iso);
-  if (!info) return <span className="text-muted-foreground">—</span>;
-  const expired = info.days < 0;
-  const soon = !expired && info.days <= 7;
-  return (
-    <div className="leading-tight">
-      <div>{info.label}</div>
-      {(expired || soon) && (
-        <div
-          className={cn(
-            "text-xs",
-            expired
-              ? "text-red-600 dark:text-red-400"
-              : "text-amber-600 dark:text-amber-400",
-          )}
-        >
-          {expired
-            ? "Expired"
-            : info.days === 0
-              ? "Expires today"
-              : `${info.days}d left`}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RowActions({
-  item,
-  onEdit,
-  onDelete,
-}: {
-  item: InventoryItem;
-  onEdit: (item: InventoryItem) => void;
-  onDelete: (item: InventoryItem) => void;
-}) {
-  return (
-    <div className="flex items-center justify-end gap-1">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-8"
-        onClick={() => onEdit(item)}
-        aria-label={`Edit ${item.name}`}
-      >
-        <Pencil className="size-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-8 text-muted-foreground hover:text-destructive"
-        onClick={() => onDelete(item)}
-        aria-label={`Remove ${item.name}`}
-      >
-        <Trash2 className="size-4" />
-      </Button>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Filter popover built on Command                                     */
-/* ------------------------------------------------------------------ */
-
-type FilterOption = {
-  value: string;
-  label: string;
-  count: number;
-  dot?: string;
-};
-
-function FilterPopover({
-  title,
-  options,
-  selected,
-  onChange,
-  searchable = false,
-}: {
-  title: string;
-  options: FilterOption[];
-  selected: string[];
-  onChange: (next: string[]) => void;
-  searchable?: boolean;
-}) {
-  const toggle = (value: string) =>
-    onChange(
-      selected.includes(value)
-        ? selected.filter((v) => v !== value)
-        : [...selected, value],
-    );
-
-  const selectedLabels = options
-    .filter((o) => selected.includes(o.value))
-    .map((o) => o.label);
-
-  return (
-    <Popover>
-      <PopoverTrigger
-        render={
-          <Button variant="outline" size="sm" className="border-dashed" />
-        }
-      >
-        <Plus className="size-4" />
-        {title}
-        {selected.length > 0 && (
-          <>
-            <span className="mx-1 h-4 w-px bg-border" />
-            {selected.length <= 2 ? (
-              selectedLabels.map((l) => (
-                <Badge
-                  key={l}
-                  variant="secondary"
-                  className="rounded-sm px-1.5 font-normal"
-                >
-                  {l}
-                </Badge>
-              ))
-            ) : (
-              <Badge
-                variant="secondary"
-                className="rounded-sm px-1.5 font-normal"
-              >
-                {selected.length} selected
-              </Badge>
-            )}
-          </>
-        )}
-      </PopoverTrigger>
-
-      <PopoverContent align="start" className="w-64 p-0">
-        <Command>
-          {searchable && (
-            <CommandInput placeholder={`Search ${title.toLowerCase()}`} />
-          )}
-          <CommandList>
-            <CommandEmpty>No results.</CommandEmpty>
-            <CommandGroup>
-              {options.map((o) => {
-                const isOn = selected.includes(o.value);
-                return (
-                  <CommandItem
-                    key={o.value}
-                    // cmdk filters on `value`, so use the visible label
-                    value={o.label}
-                    onSelect={() => toggle(o.value)}
-                  >
-                    <span
-                      className={cn(
-                        "flex size-4 shrink-0 items-center justify-center rounded-sm border",
-                        isOn
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "opacity-50 [&_svg]:invisible",
-                      )}
-                    >
-                      <Check className="size-3" />
-                    </span>
-                    {o.dot && (
-                      <span
-                        className={cn("size-2 shrink-0 rounded-full", o.dot)}
-                      />
-                    )}
-                    <span className="flex-1 truncate">{o.label}</span>
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {o.count}
-                    </span>
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-            {selected.length > 0 && (
-              <>
-                <CommandSeparator />
-                <CommandGroup>
-                  <CommandItem
-                    value="clear-filter"
-                    onSelect={() => onChange([])}
-                    className="justify-center text-center"
-                  >
-                    Clear filter
-                  </CommandItem>
-                </CommandGroup>
-              </>
-            )}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Add / edit form                                                     */
-/* ------------------------------------------------------------------ */
-
-type FormState = {
-  name: string;
-  unit: string;
-  onHand: string;
-  par: string;
-  lowAt: string;
-  expires: string;
-  supplierId: string;
-};
-type FormErrors = Partial<Record<keyof FormState, string>>;
-
-const quantityFields = [
-  { key: "onHand", label: "On hand" },
-  { key: "par", label: "Par level" },
-  { key: "lowAt", label: "Low-stock alert at" },
-] as const;
-
-function Field({
-  id,
-  label,
-  error,
-  hint,
-  children,
-}: {
-  id: string;
-  label: string;
-  error?: string;
-  hint?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id} className="text-muted-foreground">
-        {label}
-      </Label>
-      {children}
-      {error ? (
-        <p className="text-xs text-destructive" role="alert">
-          {error}
-        </p>
-      ) : hint ? (
-        <p className="text-xs text-muted-foreground">{hint}</p>
-      ) : null}
-    </div>
-  );
-}
-
-function ItemForm({
-  item,
-  onSubmit,
-}: {
-  item: InventoryItem | null;
-  onSubmit: (input: ItemInput) => void;
-}) {
-  const { items, suppliers } = useInventory();
-  const supplierOptions = suppliers.map((s) => ({
-    value: s.id,
-    label: s.name,
-  }));
-
-  const [form, setForm] = useState<FormState>(() => ({
-    name: item?.name ?? "",
-    unit: item?.unit ?? "pc",
-    onHand: item ? String(item.onHand) : "",
-    par: item ? String(item.par) : "",
-    lowAt: item ? String(item.lowAt) : "",
-    expires: item?.expires ?? "",
-    supplierId: item?.supplierId ?? "",
-  }));
-  const [errors, setErrors] = useState<FormErrors>({});
-
-  const set = (key: keyof FormState, value: string) =>
-    setForm((f) => ({ ...f, [key]: value }));
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
-    const name = form.name.trim();
-    const onHand = form.onHand.trim() === "" ? 0 : Number(form.onHand);
-    const par = form.par.trim() === "" ? 0 : Number(form.par);
-    const lowAt = form.lowAt.trim() === "" ? 0 : Number(form.lowAt);
-
-    const next: FormErrors = {};
-    if (!name) next.name = "Enter an ingredient name.";
-    else if (
-      items.some(
-        (i) => i.id !== item?.id && i.name.toLowerCase() === name.toLowerCase(),
-      )
-    )
-      next.name = "An item with this name already exists.";
-    if (Number.isNaN(onHand) || onHand < 0) next.onHand = "Enter 0 or more.";
-    if (!(par > 0)) next.par = "Enter a par level above 0.";
-    if (Number.isNaN(lowAt) || lowAt < 0) next.lowAt = "Enter 0 or more.";
-    else if (par > 0 && lowAt > par) next.lowAt = "Can't be higher than par.";
-    if (!form.supplierId) next.supplierId = "Choose a supplier.";
-
-    setErrors(next);
-    if (Object.keys(next).length > 0) return;
-
-    onSubmit({
-      name,
-      unit: form.unit,
-      onHand,
-      par,
-      lowAt,
-      expires: form.expires || null,
-      supplierId: form.supplierId,
-    });
-  }
-
-  return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-4">
-      <Field id="name" label="Ingredient name" error={errors.name}>
-        <Input
-          id="name"
-          placeholder="e.g. Meyer lemons"
-          value={form.name}
-          aria-invalid={!!errors.name}
-          onChange={(e) => set("name", e.target.value)}
-        />
-      </Field>
-
-      <div className="grid grid-cols-2 gap-4">
-        <Field id="unit" label="Unit">
-          <Select
-            value={form.unit}
-            onValueChange={(v) => set("unit", v ?? "pc")}
-          >
-            <SelectTrigger id="unit" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {UNITS.map((u) => (
-                <SelectItem key={u} value={u}>
-                  {u}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-
-        {quantityFields.map((f) => (
-          <Field key={f.key} id={f.key} label={f.label} error={errors[f.key]}>
-            <div className="relative">
-              <Input
-                id={f.key}
-                type="number"
-                min="0"
-                step="any"
-                placeholder="0"
-                className="pr-12"
-                value={form[f.key]}
-                aria-invalid={!!errors[f.key]}
-                onChange={(e) => set(f.key, e.target.value)}
-              />
-              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">
-                {form.unit}
-              </span>
-            </div>
-          </Field>
-        ))}
-
-        <Field
-          id="expires"
-          label="Expiry date"
-          hint="Leave blank if it doesn't expire."
-        >
-          <Input
-            id="expires"
-            type="date"
-            value={form.expires}
-            onChange={(e) => set("expires", e.target.value)}
-          />
-        </Field>
-
-        <Field id="supplier" label="Supplier" error={errors.supplierId}>
-          <Select
-            items={supplierOptions}
-            value={form.supplierId || null}
-            onValueChange={(v) => set("supplierId", v ?? "")}
-          >
-            <SelectTrigger
-              id="supplier"
-              className="w-full"
-              aria-invalid={!!errors.supplierId}
-            >
-              <SelectValue placeholder="Choose a supplier" />
-            </SelectTrigger>
-            <SelectContent>
-              {supplierOptions.map((s) => (
-                <SelectItem key={s.value} value={s.value}>
-                  {s.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-      </div>
-
-      <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit">{item ? "Save changes" : "Add item"}</Button>
-      </DialogFooter>
-    </form>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /* Inventory view                                                      */
 /* ------------------------------------------------------------------ */
-
 export default function InventoryView() {
   const { items, suppliers, addItem, updateItem, removeItem } = useInventory();
   const supplierName = useMemo(
@@ -674,7 +190,10 @@ export default function InventoryView() {
                 {items.length}
               </span>
             </TabsTrigger>
-            <TabsTrigger value="suppliers" className="gap-2 px-3">
+            <TabsTrigger
+              value="suppliers"
+              className="cursor-pointer w-full gap-2 px-3"
+            >
               Suppliers
               <span className="text-xs tabular-nums text-muted-foreground">
                 {suppliers.length}
@@ -683,7 +202,7 @@ export default function InventoryView() {
           </TabsList>
 
           {tab === "items" && (
-            <Button size="sm" onClick={openAdd}>
+            <Button size="sm" onClick={openAdd} className="cursor-pointer">
               <Plus className="size-4" />
               Add item
             </Button>
@@ -707,7 +226,7 @@ export default function InventoryView() {
               />
             </div>
 
-            <FilterPopover
+            <FilterPopoverComponent
               title="Status"
               options={statusOptions}
               selected={statusFilter}
@@ -716,7 +235,7 @@ export default function InventoryView() {
                 setPage(1);
               }}
             />
-            <FilterPopover
+            <FilterPopoverComponent
               title="Supplier"
               options={supplierOptions}
               selected={supplierFilter}
@@ -825,7 +344,11 @@ export default function InventoryView() {
                       <TableCell className="font-medium">{item.name}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <StockBar item={item} className="w-24" />
+                          <StockBarComponent
+                            statusBar={statusBar}
+                            item={item}
+                            className="w-24"
+                          />
                           <span className="tabular-nums">
                             {qty(item.onHand, item.unit)}
                           </span>
@@ -838,14 +361,17 @@ export default function InventoryView() {
                         {qty(item.lowAt, item.unit)}
                       </TableCell>
                       <TableCell>
-                        <ExpiryCell iso={item.expires} />
+                        <ExpiryCellComponent iso={item.expires} />
                       </TableCell>
                       <TableCell>
-                        <StatusBadge status={getStatus(item)} />
+                        <StatusBadgeComponent
+                          statusBadge={statusBadge}
+                          status={getStatus(item)}
+                        />
                       </TableCell>
                       <TableCell>{supplierName[item.supplierId]}</TableCell>
                       <TableCell>
-                        <RowActions
+                        <RowActionsComponent
                           item={item}
                           onEdit={openEdit}
                           onDelete={openDelete}
@@ -874,7 +400,10 @@ export default function InventoryView() {
                           {supplierName[item.supplierId]}
                         </p>
                       </div>
-                      <StatusBadge status={status} />
+                      <StatusBadgeComponent
+                        statusBadge={statusBadge}
+                        status={status}
+                      />
                     </div>
 
                     <div className="space-y-2">
@@ -886,7 +415,7 @@ export default function InventoryView() {
                           of {qty(item.par, item.unit)} par
                         </span>
                       </div>
-                      <StockBar item={item} />
+                      <StockBarComponent statusBar={statusBar} item={item} />
                     </div>
 
                     <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -903,13 +432,13 @@ export default function InventoryView() {
                           Expires
                         </dt>
                         <dd>
-                          <ExpiryCell iso={item.expires} />
+                          <ExpiryCellComponent iso={item.expires} />
                         </dd>
                       </div>
                     </dl>
 
                     <div className="mt-auto border-t pt-3">
-                      <RowActions
+                      <RowActionsComponent
                         item={item}
                         onEdit={openEdit}
                         onDelete={openDelete}
@@ -1031,7 +560,11 @@ export default function InventoryView() {
                 : "New items appear in the list and start sending stock alerts right away."}
             </DialogDescription>
           </DialogHeader>
-          <ItemForm key={formKey} item={editing} onSubmit={handleSave} />
+          <ItemFormComponent
+            key={formKey}
+            item={editing}
+            onSubmit={handleSave}
+          />
         </DialogContent>
       </Dialog>
 

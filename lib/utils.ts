@@ -1,3 +1,10 @@
 export { cn } from "cn";
 
 export const uid = () => crypto.randomUUID();
+
+export const money = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});

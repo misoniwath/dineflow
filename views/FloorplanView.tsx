@@ -1,34 +1,21 @@
 "use client";
-import {
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type PointerEvent,
-  type ReactNode,
-} from "react";
+import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import Link from "next/link";
-import { Check, Minus, Pencil, Plus, Users } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+import { STATUSES, STATUS_LABEL, ZONES, useFloor } from "@/stores/FloorStore";
+import { FloorTable, TableInput, TableStatus, Zone } from "@/types/Floor";
+
+import TableFormComponent from "@/components/floor/TableFormComponent";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -38,18 +25,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
-import {
-  STATUSES,
-  STATUS_LABEL,
-  ZONES,
-  useFloor,
-  type FloorTable,
-  type TableInput,
-  type TableShape,
-  type TableStatus,
-  type Zone,
-} from "@/stores/FloorStore";
+import { Check, Minus, Pencil, Plus, Users } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /* Constants + helpers                                                 */
@@ -83,12 +59,6 @@ const statusBadge: Record<TableStatus, string> = {
   cleaning: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
 };
 
-const shapeOptions: { value: TableShape; label: string }[] = [
-  { value: "round", label: "Round" },
-  { value: "square", label: "Square" },
-  { value: "rect", label: "Rectangle" },
-];
-
 /** Fixed parts of each room, so the canvas reads as a floor plan. */
 const landmarks: Record<Zone, { label: string; className: string }[]> = {
   "Main hall": [
@@ -115,179 +85,8 @@ function tableBox(t: FloorTable) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Add / edit form                                                     */
-/* ------------------------------------------------------------------ */
-
-type FormState = { number: string; seats: string; shape: string; zone: string };
-type FormErrors = Partial<Record<keyof FormState, string>>;
-
-function Field({
-  id,
-  label,
-  error,
-  children,
-}: {
-  id: string;
-  label: string;
-  error?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id} className="text-muted-foreground">
-        {label}
-      </Label>
-      {children}
-      {error && (
-        <p className="text-xs text-destructive" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function TableForm({
-  table,
-  defaultZone,
-  nextNumber,
-  onSubmit,
-  onRemove,
-}: {
-  table: FloorTable | null;
-  defaultZone: Zone;
-  nextNumber: number;
-  onSubmit: (input: TableInput) => void;
-  onRemove: () => void;
-}) {
-  const { tables } = useFloor();
-  const [form, setForm] = useState<FormState>(() => ({
-    number: String(table?.number ?? nextNumber),
-    seats: String(table?.seats ?? 4),
-    shape: table?.shape ?? "square",
-    zone: table?.zone ?? defaultZone,
-  }));
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [confirmRemove, setConfirmRemove] = useState(false);
-
-  const set = (key: keyof FormState, value: string) =>
-    setForm((f) => ({ ...f, [key]: value }));
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const number = Number(form.number);
-    const seats = Number(form.seats);
-
-    const next: FormErrors = {};
-    if (!Number.isInteger(number) || number < 1)
-      next.number = "Enter a whole number, 1 or higher.";
-    else if (tables.some((t) => t.id !== table?.id && t.number === number))
-      next.number = `Table ${number} already exists.`;
-    if (!Number.isInteger(seats) || seats < 1 || seats > 12)
-      next.seats = "Enter between 1 and 12 seats.";
-
-    setErrors(next);
-    if (Object.keys(next).length > 0) return;
-
-    onSubmit({
-      number,
-      seats,
-      shape: form.shape as TableShape,
-      zone: form.zone as Zone,
-    });
-  }
-
-  return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <Field id="number" label="Table number" error={errors.number}>
-          <Input
-            id="number"
-            type="number"
-            min="1"
-            value={form.number}
-            aria-invalid={!!errors.number}
-            onChange={(e) => set("number", e.target.value)}
-          />
-        </Field>
-        <Field id="seats" label="Seats" error={errors.seats}>
-          <Input
-            id="seats"
-            type="number"
-            min="1"
-            max="12"
-            value={form.seats}
-            aria-invalid={!!errors.seats}
-            onChange={(e) => set("seats", e.target.value)}
-          />
-        </Field>
-        <Field id="shape" label="Shape">
-          <Select
-            items={shapeOptions}
-            value={form.shape}
-            onValueChange={(v) => set("shape", v ?? "square")}
-          >
-            <SelectTrigger id="shape" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {shapeOptions.map((s) => (
-                <SelectItem key={s.value} value={s.value}>
-                  {s.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field id="zone" label="Area">
-          <Select
-            value={form.zone}
-            onValueChange={(v) => set("zone", v ?? defaultZone)}
-          >
-            <SelectTrigger id="zone" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ZONES.map((z) => (
-                <SelectItem key={z} value={z}>
-                  {z}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-      </div>
-
-      <DialogFooter className="sm:justify-between">
-        {table ? (
-          <Button
-            type="button"
-            variant={confirmRemove ? "destructive" : "outline"}
-            className={cn(!confirmRemove && "text-destructive")}
-            onClick={() =>
-              confirmRemove ? onRemove() : setConfirmRemove(true)
-            }
-          >
-            {confirmRemove ? "Confirm remove" : "Remove table"}
-          </Button>
-        ) : (
-          <span />
-        )}
-        <div className="flex flex-col-reverse gap-2 sm:flex-row">
-          <DialogClose render={<Button type="button" variant="outline" />}>
-            Cancel
-          </DialogClose>
-          <Button type="submit">{table ? "Save changes" : "Add table"}</Button>
-        </div>
-      </DialogFooter>
-    </form>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* Floor plan view                                                     */
 /* ------------------------------------------------------------------ */
-
 export default function FloorPlanView() {
   const { tables, addTable, updateTable, setStatus, removeTable } = useFloor();
 
@@ -639,7 +438,7 @@ export default function FloorPlanView() {
                 : "The new table appears in the current area. Drag it into place."}
             </DialogDescription>
           </DialogHeader>
-          <TableForm
+          <TableFormComponent
             key={formKey}
             table={editing}
             defaultZone={zone}

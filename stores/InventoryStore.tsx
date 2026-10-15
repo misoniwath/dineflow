@@ -7,30 +7,26 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import {
+  InventoryItem,
+  ItemInput,
+  StockStatus,
+  Supplier,
+} from "@/types/Inventory";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
-
-export const UNITS = ["pc", "lb", "kg", "oz", "l", "btl", "keg", "case"] as const;
-
-export type Supplier = { id: string; name: string };
-
-export type InventoryItem = {
-  id: string;
-  name: string;
-  unit: string;
-  onHand: number;
-  par: number;
-  lowAt: number;
-  /** ISO date (YYYY-MM-DD) or null when the item doesn't expire */
-  expires: string | null;
-  supplierId: string;
-};
-
-export type ItemInput = Omit<InventoryItem, "id">;
-
-export type StockStatus = "at-par" | "low" | "out";
+export const UNITS = [
+  "pc",
+  "lb",
+  "kg",
+  "oz",
+  "l",
+  "btl",
+  "keg",
+  "case",
+] as const;
 
 export const STATUS_LABEL: Record<StockStatus, string> = {
   "at-par": "At par",
@@ -48,7 +44,6 @@ export function getStatus(item: InventoryItem): StockStatus {
 /* ------------------------------------------------------------------ */
 /* Seed data                                                           */
 /* ------------------------------------------------------------------ */
-
 const seedSuppliers: Supplier[] = [
   { id: "bellwood", name: "Bellwood Distributors" },
   { id: "coastal", name: "Coastal Seafood Co." },
@@ -58,22 +53,111 @@ const seedSuppliers: Supplier[] = [
 ];
 
 const seedItems: InventoryItem[] = [
-  { id: "i1", name: "Arborio rice", unit: "lb", onHand: 22, par: 25, lowAt: 8, expires: "2027-03-02", supplierId: "milano" },
-  { id: "i2", name: "Burrata", unit: "pc", onHand: 14, par: 20, lowAt: 6, expires: "2026-10-22", supplierId: "green" },
-  { id: "i3", name: "Chicken breast", unit: "lb", onHand: 0, par: 35, lowAt: 10, expires: null, supplierId: "riverside" },
-  { id: "i4", name: "Dried pappardelle", unit: "lb", onHand: 14, par: 20, lowAt: 6, expires: "2027-05-18", supplierId: "milano" },
-  { id: "i5", name: "Heirloom tomato", unit: "lb", onHand: 6, par: 30, lowAt: 10, expires: "2026-10-18", supplierId: "green" },
-  { id: "i6", name: "House red wine", unit: "btl", onHand: 18, par: 24, lowAt: 6, expires: null, supplierId: "bellwood" },
-  { id: "i7", name: "IPA keg", unit: "keg", onHand: 1, par: 4, lowAt: 2, expires: "2026-11-20", supplierId: "bellwood" },
-  { id: "i8", name: "Parmigiano", unit: "lb", onHand: 9, par: 10, lowAt: 3, expires: "2027-01-08", supplierId: "milano" },
-  { id: "i9", name: "Salmon fillet", unit: "pc", onHand: 34, par: 50, lowAt: 15, expires: "2026-10-17", supplierId: "coastal" },
-  { id: "i10", name: "Shishito peppers", unit: "lb", onHand: 11, par: 15, lowAt: 4, expires: "2026-10-19", supplierId: "green" },
+  {
+    id: "i1",
+    name: "Arborio rice",
+    unit: "lb",
+    onHand: 22,
+    par: 25,
+    lowAt: 8,
+    expires: "2027-03-02",
+    supplierId: "milano",
+  },
+  {
+    id: "i2",
+    name: "Burrata",
+    unit: "pc",
+    onHand: 14,
+    par: 20,
+    lowAt: 6,
+    expires: "2026-10-22",
+    supplierId: "green",
+  },
+  {
+    id: "i3",
+    name: "Chicken breast",
+    unit: "lb",
+    onHand: 0,
+    par: 35,
+    lowAt: 10,
+    expires: null,
+    supplierId: "riverside",
+  },
+  {
+    id: "i4",
+    name: "Dried pappardelle",
+    unit: "lb",
+    onHand: 14,
+    par: 20,
+    lowAt: 6,
+    expires: "2027-05-18",
+    supplierId: "milano",
+  },
+  {
+    id: "i5",
+    name: "Heirloom tomato",
+    unit: "lb",
+    onHand: 6,
+    par: 30,
+    lowAt: 10,
+    expires: "2026-10-18",
+    supplierId: "green",
+  },
+  {
+    id: "i6",
+    name: "House red wine",
+    unit: "btl",
+    onHand: 18,
+    par: 24,
+    lowAt: 6,
+    expires: null,
+    supplierId: "bellwood",
+  },
+  {
+    id: "i7",
+    name: "IPA keg",
+    unit: "keg",
+    onHand: 1,
+    par: 4,
+    lowAt: 2,
+    expires: "2026-11-20",
+    supplierId: "bellwood",
+  },
+  {
+    id: "i8",
+    name: "Parmigiano",
+    unit: "lb",
+    onHand: 9,
+    par: 10,
+    lowAt: 3,
+    expires: "2027-01-08",
+    supplierId: "milano",
+  },
+  {
+    id: "i9",
+    name: "Salmon fillet",
+    unit: "pc",
+    onHand: 34,
+    par: 50,
+    lowAt: 15,
+    expires: "2026-10-17",
+    supplierId: "coastal",
+  },
+  {
+    id: "i10",
+    name: "Shishito peppers",
+    unit: "lb",
+    onHand: 11,
+    par: 15,
+    lowAt: 4,
+    expires: "2026-10-19",
+    supplierId: "green",
+  },
 ];
 
 /* ------------------------------------------------------------------ */
 /* Context                                                             */
 /* ------------------------------------------------------------------ */
-
 type InventoryContextValue = {
   items: InventoryItem[];
   suppliers: Supplier[];

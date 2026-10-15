@@ -1,20 +1,13 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 
-import {
-  ArrowRight,
-  BarChart3,
-  CalendarClock,
-  ChefHat,
-  LayoutGrid,
-  Package,
-  Plus,
-  Receipt,
-  ShoppingBag,
-  Users,
-  UsersRound,
-} from "lucide-react";
+import { navItems } from "@/lib/navItems";
+import { cn, money } from "@/lib/utils";
+
+import { useGreeting } from "@/hooks/useGreeting";
+
+import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
+import HomeStatCardComponent from "@/components/HomeStatCardComponent";
 
 /* ------------------------------------------------------------------ */
 /* Placeholder data — swap for your store / API                        */
@@ -86,110 +79,6 @@ const lowStock = [
   { id: "i3", name: "Shishito peppers", left: 1.5, unit: "kg", par: 5 },
 ];
 
-const modules = [
-  {
-    href: "/order",
-    label: "Order entry",
-    desc: "Take orders by table",
-    icon: ShoppingBag,
-  },
-  {
-    href: "/kitchen",
-    label: "Kitchen display",
-    desc: "Tickets in progress",
-    icon: ChefHat,
-  },
-  {
-    href: "/floor-plan",
-    label: "Floor plan",
-    desc: "Table layout and status",
-    icon: LayoutGrid,
-  },
-  {
-    href: "/reservations",
-    label: "Reservations",
-    desc: "Bookings and waitlist",
-    icon: CalendarClock,
-  },
-  {
-    href: "/billing",
-    label: "Billing",
-    desc: "Close out and split bills",
-    icon: Receipt,
-  },
-  {
-    href: "/inventory",
-    label: "Inventory",
-    desc: "Items and suppliers",
-    icon: Package,
-  },
-  {
-    href: "/scheduling",
-    label: "Scheduling",
-    desc: "Staff shifts",
-    icon: UsersRound,
-  },
-  {
-    href: "/analytics",
-    label: "Analytics",
-    desc: "Sales and trends",
-    icon: BarChart3,
-  },
-  { href: "/users", label: "Users", desc: "Accounts and roles", icon: Users },
-];
-
-const money = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
-
-/* ------------------------------------------------------------------ */
-/* Small pieces                                                        */
-/* ------------------------------------------------------------------ */
-
-function useGreeting() {
-  // Computed after mount so server and client markup match.
-  const [greeting, setGreeting] = useState("Welcome back");
-  const [date, setDate] = useState("");
-  useEffect(() => {
-    const now = new Date();
-    const h = now.getHours();
-    setGreeting(
-      h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening",
-    );
-    setDate(
-      now.toLocaleDateString("en-US", {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-      }),
-    );
-  }, []);
-  return { greeting, date };
-}
-
-function Stat({
-  label,
-  value,
-  note,
-}: {
-  label: string;
-  value: string;
-  note: string;
-}) {
-  return (
-    <Card className="gap-1 py-4">
-      <CardHeader className="px-4 pb-0">
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl tabular-nums">{value}</CardTitle>
-      </CardHeader>
-      <CardContent className="px-4 pt-1 text-xs text-muted-foreground">
-        {note}
-      </CardContent>
-    </Card>
-  );
-}
-
 const statusStyles: Record<TableStatus, string> = {
   free: "border bg-background text-foreground hover:bg-muted",
   occupied: "bg-primary text-primary-foreground",
@@ -199,8 +88,7 @@ const statusStyles: Record<TableStatus, string> = {
 /* ------------------------------------------------------------------ */
 /* Home                                                                */
 /* ------------------------------------------------------------------ */
-
-export default function HomePage() {
+export default function HomeView() {
   const { greeting, date } = useGreeting();
   const [queueTab, setQueueTab] = useState<"preparing" | "ready">("preparing");
 
@@ -229,24 +117,24 @@ export default function HomePage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Stat
+        <HomeStatCardComponent
           label="Sales today"
           value={money.format(1284)}
           note="42 orders closed"
         />
-        <Stat
+        <HomeStatCardComponent
           label="Open orders"
           value={String(
             kitchenQueue.preparing.length + kitchenQueue.ready.length,
           )}
           note={`${kitchenQueue.ready.length} ready to serve`}
         />
-        <Stat
+        <HomeStatCardComponent
           label="Tables in use"
           value={`${occupied}/${tableList.length}`}
           note={`${reserved} reserved soon`}
         />
-        <Stat
+        <HomeStatCardComponent
           label="Reservations tonight"
           value={String(reservations.length)}
           note={`${reservations.reduce((s, r) => s + r.party, 0)} guests expected`}
@@ -277,7 +165,6 @@ export default function HomePage() {
                 {tableList.map(({ n, s }) => (
                   <Button
                     key={n}
-                    asChild
                     variant="ghost"
                     className={cn("h-14 tabular-nums", statusStyles[s])}
                   >
@@ -389,7 +276,7 @@ export default function HomePage() {
                   Tonight&apos;s reservations
                 </CardTitle>
               </div>
-              <Button asChild variant="ghost" size="sm">
+              <Button variant="ghost" size="sm">
                 <Link href="/reservations">View all</Link>
               </Button>
             </CardHeader>
@@ -427,7 +314,7 @@ export default function HomePage() {
                 <CardTitle className="text-base">Running low</CardTitle>
                 <CardDescription>Below par level.</CardDescription>
               </div>
-              <Button asChild variant="ghost" size="sm">
+              <Button variant="ghost" size="sm">
                 <Link href="/inventory">Inventory</Link>
               </Button>
             </CardHeader>
@@ -468,7 +355,7 @@ export default function HomePage() {
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">Everything else</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {modules.map(({ href, label, desc, icon: Icon }) => (
+          {navItems.map(({ href, title, desc, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -478,7 +365,7 @@ export default function HomePage() {
                 <Icon className="size-5" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium">{label}</span>
+                <span className="block text-sm font-medium">{title}</span>
                 <span className="block truncate text-xs text-muted-foreground">
                   {desc}
                 </span>

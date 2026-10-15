@@ -7,17 +7,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { FloorTable, TableInput, TableStatus } from "@/types/Floor";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
-
 export const ZONES = ["Main hall", "Patio", "Bar"] as const;
-export type Zone = (typeof ZONES)[number];
-
-export type TableStatus = "free" | "occupied" | "reserved" | "cleaning";
-export type TableShape = "round" | "square" | "rect";
-
 export const STATUS_LABEL: Record<TableStatus, string> = {
   free: "Free",
   occupied: "Occupied",
@@ -26,29 +21,9 @@ export const STATUS_LABEL: Record<TableStatus, string> = {
 };
 export const STATUSES = Object.keys(STATUS_LABEL) as TableStatus[];
 
-export type FloorTable = {
-  id: string;
-  number: number;
-  seats: number;
-  shape: TableShape;
-  zone: Zone;
-  /** Position on the canvas, as a percentage (0–100) of its width/height */
-  x: number;
-  y: number;
-  status: TableStatus;
-  /** Guests currently seated; 0 unless the table is occupied */
-  guests: number;
-};
-
-export type TableInput = Pick<
-  FloorTable,
-  "number" | "seats" | "shape" | "zone"
->;
-
 /* ------------------------------------------------------------------ */
 /* Seed data                                                           */
 /* ------------------------------------------------------------------ */
-
 const seed: FloorTable[] = [
   {
     id: "t1",
@@ -187,7 +162,6 @@ const seed: FloorTable[] = [
 /* ------------------------------------------------------------------ */
 /* Context                                                             */
 /* ------------------------------------------------------------------ */
-
 type FloorContextValue = {
   tables: FloorTable[];
   addTable: (input: TableInput) => FloorTable;
