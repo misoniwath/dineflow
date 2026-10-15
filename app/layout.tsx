@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "@/styles/globals.css";
 import { ThemeProvider } from "next-themes";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { AppProvider } from "@/stores/AppStore";
 import SidebarComponent from "@/components/SidebarComponent";
 import HeaderComponent from "@/components/HeaderComponent";
 
@@ -31,14 +32,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <SidebarProvider>
-            <SidebarComponent />
+          <AppProvider>
+            <SidebarProvider>
+              <SidebarComponent />
 
-            <SidebarInset>
-              <HeaderComponent />
-              <main className="flex-1 p-4">{children}</main>
-            </SidebarInset>
-          </SidebarProvider>
+              <SidebarInset>
+                <HeaderComponent />
+                <main className="flex-1 p-4">{children}</main>
+              </SidebarInset>
+            </SidebarProvider>
+          </AppProvider>
         </ThemeProvider>
       </body>
     </html>
