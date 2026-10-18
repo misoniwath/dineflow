@@ -4,6 +4,7 @@ import { useState } from "react";
 import { cn, money } from "@/lib/utils";
 
 import { useOrder } from "@/stores/OrderStore";
+import { useFloor } from "@/stores/FloorStore";
 
 import {
   Minus,
@@ -27,8 +28,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MenuCardComponent from "@/components/MenuCardComponent";
 
-const tables = Array.from({ length: 12 }, (_, i) => i + 1);
-
 /* ------------------------------------------------------------------ */
 /* Order view                                                          */
 /* ------------------------------------------------------------------ */
@@ -40,14 +39,17 @@ export default function OrderView() {
     tickets,
     setTickets,
     sendOrderToKitchen,
-    isLoading,
+    loading: isOrderLoading,
   } = useOrder();
+  const { tables, loading: isFloorLoading } = useFloor();
 
   const [category, setCategory] = useState<string>("");
   const [table, setTable] = useState<number>(4);
   const [viewMode, setViewMode] = useState<"table" | "card">("table");
   const [cartOpen, setCartOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const loading = isOrderLoading || isFloorLoading;
 
   // Default to the first available category once the menu is loaded
   const activeCategory = category || categories[0];
@@ -85,7 +87,7 @@ export default function OrderView() {
     }
   }
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="flex h-96 items-center justify-center gap-2 text-muted-foreground">
         <Loader2 className="size-5 animate-spin" />
@@ -129,7 +131,7 @@ export default function OrderView() {
             </Badge>
 
             <span className="hidden border-l pl-2 tabular-nums sm:inline">
-              {money.format(total)}
+              {money.format(total / 100)}
             </span>
           </SheetTrigger>
 
@@ -176,24 +178,25 @@ export default function OrderView() {
                 </span>
               </div>
               <div className="grid grid-cols-4 gap-2">
-                {tables.map((t) => {
-                  const hasOrder = Object.keys(tickets[t] ?? {}).length > 0;
+                {tables.map((tItem) => {
+                  const tNum = tItem.number;
+                  const hasOrder = Object.keys(tickets[tNum] ?? {}).length > 0;
                   return (
                     <Button
-                      key={t}
+                      key={tItem.id}
                       size="sm"
-                      variant={t === table ? "default" : "outline"}
-                      onClick={() => setTable(t)}
-                      aria-pressed={t === table}
-                      aria-label={`Table ${t}${hasOrder ? ", has an open order" : ""}`}
+                      variant={tNum === table ? "default" : "outline"}
+                      onClick={() => setTable(tNum)}
+                      aria-pressed={tNum === table}
+                      aria-label={`Table ${tNum}${hasOrder ? ", has an open order" : ""}`}
                       className="relative tabular-nums"
                     >
-                      {t}
+                      {tNum}
                       {hasOrder && (
                         <span
                           className={cn(
                             "absolute right-1 top-1 size-2 rounded-full",
-                            t === table
+                            tNum === table
                               ? "bg-primary-foreground"
                               : "bg-primary",
                           )}
@@ -246,7 +249,7 @@ export default function OrderView() {
                         <Plus className="size-3" />
                       </Button>
                       <span className="w-16 text-right tabular-nums">
-                        {money.format(item.price * qty)}
+                        {money.format((item.price / 100) * qty)}
                       </span>
                     </li>
                   ))}
@@ -270,7 +273,7 @@ export default function OrderView() {
                           {item.name}
                         </div>
                         <div className="text-xs text-muted-foreground tabular-nums">
-                          {money.format(item.price)} each
+                          {money.format(item.price / 100)} each
                         </div>
                         <div className="mt-2 flex items-center gap-2">
                           <Button
@@ -299,7 +302,7 @@ export default function OrderView() {
                         </div>
                       </div>
                       <div className="font-semibold tabular-nums">
-                        {money.format(item.price * qty)}
+                        {money.format((item.price / 100) * qty)}
                       </div>
                     </div>
                   ))}
@@ -311,7 +314,7 @@ export default function OrderView() {
               <div className="flex items-center justify-between">
                 <span className="text-sm">Total</span>
                 <span className="text-xl font-semibold tabular-nums">
-                  {money.format(total)}
+                  {money.format(total / 100)}
                 </span>
               </div>
               <Button

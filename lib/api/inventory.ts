@@ -1,15 +1,21 @@
 import { InventoryItem, ItemInput } from "@/types/Inventory";
 
-export async function getInventoryItems(): Promise<InventoryItem[]> {
+function mapApiInventoryItem(item: InventoryItem): InventoryItem {
+  return {
+    ...item,
+    name: typeof item.name === "string" ? item.name.trim() : item.name,
+    unit: typeof item.unit === "string" ? item.unit.trim() : item.unit,
+  };
+}
+
+export async function getInventoryItemsApi() {
   const res = await fetch("/api/inventory-items");
   const data = await res.json();
   if (!res.ok) throw new Error(data.message ?? "Failed to fetch inventory");
-  return data.items;
+  return data.items.map(mapApiInventoryItem);
 }
 
-export async function saveInventoryItem(
-  input: ItemInput & { id?: string },
-): Promise<InventoryItem> {
+export async function saveInventoryItemApi(input: ItemInput & { id?: string }) {
   const res = await fetch("/api/inventory-items", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -17,10 +23,10 @@ export async function saveInventoryItem(
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.message ?? "Failed to save inventory item");
-  return data.item;
+  return mapApiInventoryItem(data.item);
 }
 
-export async function deleteInventoryItem(id: string): Promise<void> {
+export async function deleteInventoryItemApi(id: string): Promise<void> {
   const res = await fetch(`/api/inventory-items?id=${id}`, {
     method: "DELETE",
   });

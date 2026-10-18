@@ -5,9 +5,15 @@ import Link from "next/link";
 import { navItems } from "@/lib/navItems";
 import { cn, money } from "@/lib/utils";
 
-import { useGreeting } from "@/hooks/useGreeting";
+import { TableStatus } from "@/types/Floor";
 
-import { ArrowRight } from "lucide-react";
+import { useGreeting } from "@/hooks/useGreeting";
+import { useFloor } from "@/stores/FloorStore";
+import { useReservations, todayISO } from "@/stores/ReservationStore";
+import { useOrder } from "@/stores/OrderStore";
+import { useInventory } from "@/stores/InventoryStore";
+
+import { ArrowRight, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,84 +26,49 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import HomeStatCardComponent from "@/components/HomeStatCardComponent";
 
-/* ------------------------------------------------------------------ */
-/* Placeholder data — swap for your store / API                        */
-/* ------------------------------------------------------------------ */
-
-type TableStatus = "free" | "occupied" | "reserved";
-
-const tableStatus: Record<number, TableStatus> = {
-  1: "occupied",
-  2: "free",
-  3: "reserved",
-  4: "occupied",
-  5: "free",
-  6: "occupied",
-  7: "free",
-  8: "reserved",
-  9: "free",
-  10: "occupied",
-  11: "free",
-  12: "free",
-};
-
-const kitchenQueue = {
-  preparing: [
-    {
-      id: "T4-1",
-      table: 4,
-      summary: "Burrata & heirloom tomato ×2, Soup ×1",
-      minutes: 6,
-    },
-    {
-      id: "T1-2",
-      table: 1,
-      summary: "Charred shishito peppers ×1",
-      minutes: 11,
-    },
-    { id: "T10-1", table: 10, summary: "Soup of the day ×3", minutes: 3 },
-  ],
-  ready: [
-    {
-      id: "T6-1",
-      table: 6,
-      summary: "Burrata & heirloom tomato ×1",
-      minutes: 0,
-    },
-  ],
-};
-
-const reservations = [
-  { id: "r1", name: "Dara Chhun", party: 4, time: "6:30 PM", table: 3 },
-  { id: "r2", name: "Sophea Lim", party: 2, time: "7:00 PM", table: 8 },
-  { id: "r3", name: "Kosal Pich", party: 6, time: "8:15 PM", table: null },
-];
-
-const lowStock = [
-  { id: "i1", name: "Burrata", left: 3, unit: "pcs", par: 12 },
-  { id: "i2", name: "Heirloom tomatoes", left: 2, unit: "kg", par: 8 },
-  { id: "i3", name: "Shishito peppers", left: 1.5, unit: "kg", par: 5 },
-];
-
 const statusStyles: Record<TableStatus, string> = {
   free: "border bg-background text-foreground hover:bg-muted",
   occupied: "bg-primary text-primary-foreground",
   reserved: "border border-dashed border-primary bg-background text-foreground",
+  cleaning: "border border-amber-500/60 bg-amber-500/15 text-foreground",
 };
 
-/* ------------------------------------------------------------------ */
-/* Home                                                                */
-/* ------------------------------------------------------------------ */
 export default function HomeView() {
   const { greeting, date } = useGreeting();
   const [queueTab, setQueueTab] = useState<"preparing" | "ready">("preparing");
 
-  const tableList = Object.entries(tableStatus).map(([n, s]) => ({
-    n: Number(n),
-    s,
+  // Consume store data
+  const { tables, loading: floorLoading } = useFloor();
+  const { reservations, loading: resLoading } = useReservations();
+  const { kitchenQueue, loading: orderLoading } = useOrder();
+  const { items: inventoryItems, loading: inventoryLoading } = useInventory();
+
+  const loading =
+    floorLoading || resLoading || orderLoading || inventoryLoading;
+
+  const tableList = tables.map((t) => ({
+    n: t.number,
+    s: t.status as TableStatus,
   }));
+
   const occupied = tableList.filter((t) => t.s === "occupied").length;
   const reserved = tableList.filter((t) => t.s === "reserved").length;
+
+  // Filter tonight's reservations based on today's date
+  const today = todayISO();
+  const tonightReservations = reservations.filter((r) => r.date === today);
+
+  // Low stock inventory placeholder (can be swapped with an inventory store if hooked up)
+  const lowStock = inventoryItems.filter((item) => item.onHand <= item.lowAt);
+
+  if (loading) {
+    return (
+      <div className="flex h-96 items-center justify-center gap-2 text-muted-foreground">
+        <Loader2 className="size-5 animate-spin" />
+        <span>Loading dashboard...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -125,19 +96,20 @@ export default function HomeView() {
         <HomeStatCardComponent
           label="Open orders"
           value={String(
-            kitchenQueue.preparing.length + kitchenQueue.ready.length,
+            (kitchenQueue?.preparing?.length || 0) +
+              (kitchenQueue?.ready?.length || 0),
           )}
-          note={`${kitchenQueue.ready.length} ready to serve`}
+          note={`${kitchenQueue?.ready?.length || 0} ready to serve`}
         />
         <HomeStatCardComponent
           label="Tables in use"
-          value={`${occupied}/${tableList.length}`}
+          value={`${occupied}/${tableList.length || 12}`}
           note={`${reserved} reserved soon`}
         />
         <HomeStatCardComponent
           label="Reservations tonight"
-          value={String(reservations.length)}
-          note={`${reservations.reduce((s, r) => s + r.party, 0)} guests expected`}
+          value={String(tonightReservations.length)}
+          note={`${tonightReservations.reduce((s, r) => s + r.party, 0)} guests expected`}
         />
       </div>
 
@@ -153,7 +125,7 @@ export default function HomeView() {
                   Tap a table to open its order.
                 </CardDescription>
               </div>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" asChild>
                 <Link href="/floor-plan" className="flex items-center">
                   <span>Floor plan</span>
                   <ArrowRight className="ml-1.5 size-4" />
@@ -167,6 +139,7 @@ export default function HomeView() {
                     key={n}
                     variant="ghost"
                     className={cn("h-14 tabular-nums", statusStyles[s])}
+                    asChild
                   >
                     <Link
                       href={`/order?table=${n}`}
@@ -201,7 +174,7 @@ export default function HomeView() {
                   Live tickets from the kitchen.
                 </CardDescription>
               </div>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" asChild>
                 <Link href="/kitchen" className="flex items-center">
                   <span>Open display </span>
                   <ArrowRight className="ml-1.5 size-4" />
@@ -217,51 +190,57 @@ export default function HomeView() {
                   <TabsTrigger value="preparing" className="gap-2 px-3">
                     Preparing
                     <span className="text-xs tabular-nums text-muted-foreground">
-                      {kitchenQueue.preparing.length}
+                      {kitchenQueue?.preparing?.length || 0}
                     </span>
                   </TabsTrigger>
                   <TabsTrigger value="ready" className="gap-2 px-3">
                     Ready
                     <span className="text-xs tabular-nums text-muted-foreground">
-                      {kitchenQueue.ready.length}
+                      {kitchenQueue?.ready?.length || 0}
                     </span>
                   </TabsTrigger>
                 </TabsList>
 
-                {(["preparing", "ready"] as const).map((key) => (
-                  <TabsContent key={key} value={key} className="mt-4">
-                    {kitchenQueue[key].length === 0 ? (
-                      <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                        Nothing{" "}
-                        {key === "ready"
-                          ? "waiting to be served"
-                          : "in the kitchen"}{" "}
-                        right now.
-                      </p>
-                    ) : (
-                      <ul className="divide-y rounded-lg border">
-                        {kitchenQueue[key].map((t) => (
-                          <li
-                            key={t.id}
-                            className="flex items-center gap-3 p-3 text-sm"
-                          >
-                            <Badge variant="secondary" className="rounded-full">
-                              Table {t.table}
-                            </Badge>
-                            <span className="min-w-0 flex-1 truncate">
-                              {t.summary}
-                            </span>
-                            {key === "preparing" && (
-                              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                                {t.minutes} min
+                {(["preparing", "ready"] as const).map((key) => {
+                  const items = kitchenQueue?.[key] || [];
+                  return (
+                    <TabsContent key={key} value={key} className="mt-4">
+                      {items.length === 0 ? (
+                        <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                          Nothing{" "}
+                          {key === "ready"
+                            ? "waiting to be served"
+                            : "in the kitchen"}{" "}
+                          right now.
+                        </p>
+                      ) : (
+                        <ul className="divide-y rounded-lg border">
+                          {items.map((t: any) => (
+                            <li
+                              key={t.id}
+                              className="flex items-center gap-3 p-3 text-sm"
+                            >
+                              <Badge
+                                variant="secondary"
+                                className="rounded-full"
+                              >
+                                Table {t.table}
+                              </Badge>
+                              <span className="min-w-0 flex-1 truncate">
+                                {t.summary}
                               </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </TabsContent>
-                ))}
+                              {key === "preparing" && (
+                                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                                  {t.minutes} min
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </TabsContent>
+                  );
+                })}
               </Tabs>
             </CardContent>
           </Card>
@@ -276,35 +255,49 @@ export default function HomeView() {
                   Tonight&apos;s reservations
                 </CardTitle>
               </div>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" asChild>
                 <Link href="/reservations">View all</Link>
               </Button>
             </CardHeader>
             <CardContent>
-              <ul className="space-y-3">
-                {reservations.map((r) => (
-                  <li key={r.id} className="flex items-center gap-3 text-sm">
-                    <span className="w-16 shrink-0 tabular-nums text-muted-foreground">
-                      {r.time}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{r.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Party of {r.party}
-                      </div>
-                    </div>
-                    {r.table ? (
-                      <Badge variant="secondary" className="rounded-full">
-                        Table {r.table}
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="rounded-full">
-                        Unassigned
-                      </Badge>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              {tonightReservations.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No reservations left for tonight.
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {tonightReservations.map((r) => {
+                    const assignedTable = tables.find(
+                      (t) => t.id === r.tableId,
+                    );
+                    return (
+                      <li
+                        key={r.id}
+                        className="flex items-center gap-3 text-sm"
+                      >
+                        <span className="w-16 shrink-0 tabular-nums text-muted-foreground">
+                          {r.time}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-medium">{r.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Party of {r.party}
+                          </div>
+                        </div>
+                        {assignedTable ? (
+                          <Badge variant="secondary" className="rounded-full">
+                            Table {assignedTable.number}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="rounded-full">
+                            Unassigned
+                          </Badge>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </CardContent>
           </Card>
 
@@ -325,13 +318,13 @@ export default function HomeView() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-medium">{i.name}</span>
                       <span className="tabular-nums text-muted-foreground">
-                        {i.left} / {i.par} {i.unit}
+                        {i.onHand} / {i.par} {i.unit}
                       </span>
                     </div>
                     <div
                       className="h-1.5 overflow-hidden rounded-full bg-muted"
                       role="progressbar"
-                      aria-valuenow={i.left}
+                      aria-valuenow={i.onHand}
                       aria-valuemin={0}
                       aria-valuemax={i.par}
                       aria-label={`${i.name} stock level`}
@@ -339,7 +332,7 @@ export default function HomeView() {
                       <div
                         className="h-full rounded-full bg-primary"
                         style={{
-                          width: `${Math.min(100, (i.left / i.par) * 100)}%`,
+                          width: `${Math.min(100, (i.onHand / i.par) * 100)}%`,
                         }}
                       />
                     </div>

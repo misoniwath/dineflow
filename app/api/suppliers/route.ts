@@ -1,18 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db/index";
 import { suppliers } from "@/lib/db/schema";
-import { cookies } from "next/headers";
-import { verifyToken } from "@/lib/auth/jwt";
+import { isAuthenticated } from "@/lib/auth/jwt";
 import { eq } from "drizzle-orm";
-
-async function isAuthenticated() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("auth_token")?.value;
-  if (!token) return false;
-  const payload = await verifyToken(token);
-  return Boolean(payload);
-}
-
 // GET /api/suppliers - List all suppliers
 export async function GET() {
   try {

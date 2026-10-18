@@ -1,13 +1,13 @@
 import { MenuItem } from "@/types/Menu";
 
-export async function getMenuItems(): Promise<MenuItem[]> {
+export async function getMenuItemsApi(): Promise<MenuItem[]> {
   const res = await fetch("/api/menu-items");
   const data = await res.json();
   if (!res.ok) throw new Error(data.message ?? "Failed to fetch menu items");
   return data.items;
 }
 
-export async function saveMenuItem(item: MenuItem): Promise<MenuItem> {
+export async function saveMenuItemApi(item: MenuItem): Promise<MenuItem> {
   const res = await fetch("/api/menu-items", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

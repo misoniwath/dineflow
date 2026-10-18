@@ -1,6 +1,6 @@
 import { Supplier } from "@/types/Supplier";
 
-export async function getSuppliers(): Promise<Supplier[]> {
+export async function getSuppliersApi(): Promise<Supplier[]> {
   const res = await fetch("/api/suppliers", {
     method: "GET",
     headers: { "Content-Type": "application/json" },
@@ -14,7 +14,7 @@ export async function getSuppliers(): Promise<Supplier[]> {
   return data.suppliers || [];
 }
 
-export async function saveSupplier(
+export async function saveSupplierApi(
   supplier: Partial<Supplier>,
 ): Promise<Supplier> {
   const isUpdate = Boolean(supplier.id);
@@ -35,7 +35,7 @@ export async function saveSupplier(
   return data.supplier;
 }
 
-export async function deleteSupplier(id: string): Promise<void> {
+export async function deleteSupplierApi(id: string): Promise<void> {
   const res = await fetch(`/api/suppliers?id=${encodeURIComponent(id)}`, {
     method: "DELETE",
   });

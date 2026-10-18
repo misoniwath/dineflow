@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db/index";
 import { inventoryItems } from "@/lib/db/schema";
+import { isAuthenticated } from "@/lib/auth/jwt";
 import { eq, desc } from "drizzle-orm";
 
 export async function GET() {
   try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     const items = await db
       .select()
       .from(inventoryItems)
@@ -24,6 +32,13 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     const body = await request.json();
     const { name, unit, onHand, par, lowAt, expires, supplierId } = body;
 
@@ -69,6 +84,13 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 

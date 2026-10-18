@@ -5,6 +5,7 @@ const bcrypt = require("bcrypt");
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { UpdateUserBody } from "@/types/User";
+import { isAuthenticated } from "@/lib/auth/jwt";
 
 function sanitizeUser(row: typeof users.$inferSelect) {
   // Remove sensitive fields like passwordHash before returning the user object
@@ -16,6 +17,13 @@ export async function GET(
   _req: Request,
   { params }: { params: { id: string } },
 ) {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 },
+    );
+  }
+
   const row = await db
     .select()
     .from(users)
@@ -34,6 +42,13 @@ export async function PATCH(
   { params }: { params: { id: string } },
 ) {
   try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     const body = (await req.json()) as UpdateUserBody;
     const { id } = await params;
 
@@ -83,6 +98,13 @@ export async function DELETE(
   _req: Request,
   { params }: { params: { id: string } },
 ) {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 },
+    );
+  }
+
   const { id } = await params;
   // Soft delete: isActive = false
   const updated = await db

@@ -1,14 +1,27 @@
 "use client";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
 import { useFloor } from "@/stores/FloorStore";
 import {
   Reservation,
   ReservationInput,
   ReservationStatus,
 } from "@/types/Reservation";
+import {
+  getReservationsApi,
+  addReservationApi,
+  updateReservationApi,
+  deleteReservationApi,
+} from "@/lib/api/reservations";
 
 /* ------------------------------------------------------------------ */
-/* Types                                                               */
+/* Types & Helpers                                                     */
 /* ------------------------------------------------------------------ */
 export const STATUS_LABEL: Record<ReservationStatus, string> = {
   booked: "Booked",
@@ -18,12 +31,8 @@ export const STATUS_LABEL: Record<ReservationStatus, string> = {
   "no-show": "No-show",
 };
 
-/** A table is held for this long around a booking before it can be reused. */
 const HOLD_MINUTES = 90;
 
-/* ------------------------------------------------------------------ */
-/* Date + time helpers                                                 */
-/* ------------------------------------------------------------------ */
 function toISO(d: Date) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -63,117 +72,50 @@ const isActive = (r: Reservation) =>
   r.status === "booked" || r.status === "seated";
 
 /* ------------------------------------------------------------------ */
-/* Seed data (matches the seeded floor plan)                           */
-/* ------------------------------------------------------------------ */
-function makeSeed(today: string): Reservation[] {
-  const tomorrow = addDays(today, 1);
-  return [
-    {
-      id: "r1",
-      name: "Dara Chhun",
-      phone: "",
-      party: 4,
-      date: today,
-      time: "18:30",
-      notes: "Window if possible",
-      status: "booked",
-      tableId: "t3",
-    },
-    {
-      id: "r2",
-      name: "Sophea Lim",
-      phone: "",
-      party: 2,
-      date: today,
-      time: "19:00",
-      notes: "",
-      status: "booked",
-      tableId: "t8",
-    },
-    {
-      id: "r3",
-      name: "Kosal Pich",
-      phone: "",
-      party: 6,
-      date: today,
-      time: "20:15",
-      notes: "Birthday dessert",
-      status: "booked",
-      tableId: null,
-    },
-    {
-      id: "r4",
-      name: "Vanna Sok",
-      phone: "",
-      party: 2,
-      date: today,
-      time: "17:30",
-      notes: "",
-      status: "seated",
-      tableId: "t1",
-    },
-    {
-      id: "r5",
-      name: "Chenda Roth",
-      phone: "",
-      party: 5,
-      date: tomorrow,
-      time: "19:30",
-      notes: "",
-      status: "booked",
-      tableId: null,
-    },
-    {
-      id: "r6",
-      name: "Sreyneang Heng",
-      phone: "",
-      party: 8,
-      date: tomorrow,
-      time: "18:00",
-      notes: "High chair needed",
-      status: "booked",
-      tableId: null,
-    },
-  ];
-}
-
-/* ------------------------------------------------------------------ */
 /* Context                                                             */
 /* ------------------------------------------------------------------ */
 type ReservationContextValue = {
   reservations: Reservation[];
-  addReservation: (input: ReservationInput) => Reservation;
-  updateReservation: (id: string, input: ReservationInput) => void;
-  /** Pass null to unassign. */
-  assignTable: (id: string, tableId: string | null) => void;
-  /** Marks the reservation seated and the table occupied. */
-  seatReservation: (id: string) => void;
-  /** Marks the party as left and the table as cleaning. */
-  completeReservation: (id: string) => void;
-  cancelReservation: (id: string, reason: "cancelled" | "no-show") => void;
-  /** Another active reservation holding this table near this time, if any. */
+  loading: boolean;
+  addReservation: (input: ReservationInput) => Promise<Reservation>;
+  updateReservation: (id: string, input: ReservationInput) => Promise<void>;
+  assignTable: (id: string, tableId: string | null) => Promise<void>;
+  seatReservation: (id: string) => Promise<void>;
+  completeReservation: (id: string) => Promise<void>;
+  cancelReservation: (
+    id: string,
+    reason: "cancelled" | "no-show",
+  ) => Promise<void>;
   tableConflict: (
     tableId: string,
     date: string,
     time: string,
     excludeId?: string,
   ) => Reservation | undefined;
+  refreshReservations: () => Promise<void>;
 };
 
 const ReservationContext = createContext<ReservationContextValue | null>(null);
 
-function newId() {
-  return `res-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-/**
- * Must be rendered inside <FloorProvider>: reservations drive table status.
- */
 export function ReservationProvider({ children }: { children: ReactNode }) {
   const { tables, setStatus, updateTable } = useFloor();
-  const [reservations, setReservations] = useState<Reservation[]>(() =>
-    makeSeed(todayISO()),
-  );
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refreshReservations = useCallback(async () => {
+    try {
+      const data = await getReservationsApi();
+      setReservations(data);
+    } catch (error) {
+      console.error("Failed to fetch reservations:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshReservations();
+  }, [refreshReservations]);
 
   const conflictIn = (
     list: Reservation[],
@@ -191,8 +133,6 @@ export function ReservationProvider({ children }: { children: ReactNode }) {
         Math.abs(toMinutes(r.time) - toMinutes(time)) < HOLD_MINUTES,
     );
 
-  /** Floor shows "reserved" only for today's bookings. Release it when no
-   *  other booking for today still holds the table. */
   function releaseIfUnheld(tableId: string, list: Reservation[]) {
     const table = tables.find((t) => t.id === tableId);
     if (!table || table.status !== "reserved") return;
@@ -203,18 +143,28 @@ export function ReservationProvider({ children }: { children: ReactNode }) {
     if (!stillHeld) setStatus(tableId, "free");
   }
 
-  function addReservation(input: ReservationInput) {
-    const created: Reservation = {
+  const addReservation = async (input: ReservationInput) => {
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: Reservation = {
       ...input,
-      id: newId(),
+      id: tempId,
       status: "booked",
       tableId: null,
     };
-    setReservations((prev) => [...prev, created]);
-    return created;
-  }
+    setReservations((prev) => [...prev, optimistic]);
 
-  function updateReservation(id: string, input: ReservationInput) {
+    try {
+      const saved = await addReservationApi(input);
+      setReservations((prev) => prev.map((r) => (r.id === tempId ? saved : r)));
+      return saved;
+    } catch (error) {
+      console.error("Failed to add reservation:", error);
+      refreshReservations();
+      throw error;
+    }
+  };
+
+  const updateReservation = async (id: string, input: ReservationInput) => {
     const current = reservations.find((r) => r.id === id);
     if (!current) return;
 
@@ -229,65 +179,110 @@ export function ReservationProvider({ children }: { children: ReactNode }) {
         input.time,
         id,
       );
-      if (tooSmall || clash) tableId = null; // no longer a valid fit
+      if (tooSmall || clash) tableId = null;
     }
 
-    const next = reservations.map((r) =>
-      r.id === id ? { ...r, ...input, tableId } : r,
+    setReservations((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, ...input, tableId } : r)),
     );
-    setReservations(next);
-    if (current.tableId && current.tableId !== tableId) {
-      releaseIfUnheld(current.tableId, next);
-    }
-  }
 
-  function assignTable(id: string, tableId: string | null) {
+    try {
+      await updateReservationApi({ id, ...input, tableId });
+      if (current.tableId && current.tableId !== tableId) {
+        releaseIfUnheld(current.tableId, reservations);
+      }
+    } catch (error) {
+      console.error("Failed to update reservation:", error);
+      refreshReservations();
+    }
+  };
+
+  const assignTable = async (id: string, tableId: string | null) => {
     const current = reservations.find((r) => r.id === id);
     if (!current) return;
     const previous = current.tableId;
 
-    const next = reservations.map((r) => (r.id === id ? { ...r, tableId } : r));
-    setReservations(next);
+    setReservations((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, tableId } : r)),
+    );
 
-    if (previous && previous !== tableId) releaseIfUnheld(previous, next);
+    try {
+      await updateReservationApi({ id, tableId });
+      if (previous && previous !== tableId)
+        releaseIfUnheld(previous, reservations);
 
-    if (tableId && current.status === "booked" && current.date === todayISO()) {
-      const table = tables.find((t) => t.id === tableId);
-      if (table?.status === "free") setStatus(tableId, "reserved");
+      if (
+        tableId &&
+        current.status === "booked" &&
+        current.date === todayISO()
+      ) {
+        const table = tables.find((t) => t.id === tableId);
+        if (table?.status === "free") setStatus(tableId, "reserved");
+      }
+    } catch (error) {
+      console.error("Failed to assign table:", error);
+      refreshReservations();
     }
-  }
+  };
 
-  function seatReservation(id: string) {
+  const seatReservation = async (id: string) => {
     const current = reservations.find((r) => r.id === id);
     if (!current || current.status !== "booked" || !current.tableId) return;
+
     setReservations((prev) =>
       prev.map((r) => (r.id === id ? { ...r, status: "seated" } : r)),
     );
-    setStatus(current.tableId, "occupied");
-    updateTable(current.tableId, { guests: current.party });
-  }
 
-  function completeReservation(id: string) {
+    try {
+      await updateReservationApi({ id, status: "seated" });
+      setStatus(current.tableId, "occupied");
+      updateTable(current.tableId, { guests: current.party });
+    } catch (error) {
+      console.error("Failed to seat reservation:", error);
+      refreshReservations();
+    }
+  };
+
+  const completeReservation = async (id: string) => {
     const current = reservations.find((r) => r.id === id);
     if (!current || current.status !== "seated") return;
+
     setReservations((prev) =>
       prev.map((r) => (r.id === id ? { ...r, status: "completed" } : r)),
     );
-    if (current.tableId) setStatus(current.tableId, "cleaning");
-  }
 
-  function cancelReservation(id: string, reason: "cancelled" | "no-show") {
+    try {
+      await updateReservationApi({ id, status: "completed" });
+      if (current.tableId) setStatus(current.tableId, "cleaning");
+    } catch (error) {
+      console.error("Failed to complete reservation:", error);
+      refreshReservations();
+    }
+  };
+
+  const cancelReservation = async (
+    id: string,
+    reason: "cancelled" | "no-show",
+  ) => {
     const current = reservations.find((r) => r.id === id);
     if (!current) return;
-    const next = reservations.map((r) =>
-      r.id === id ? { ...r, status: reason } : r,
+
+    setReservations((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, status: reason } : r)),
     );
-    setReservations(next);
-    if (current.tableId) releaseIfUnheld(current.tableId, next);
-  }
+
+    try {
+      await updateReservationApi({ id, status: reason });
+      if (current.tableId) releaseIfUnheld(current.tableId, reservations);
+    } catch (error) {
+      console.error("Failed to cancel reservation:", error);
+      refreshReservations();
+    }
+  };
 
   const value: ReservationContextValue = {
     reservations,
+    loading,
     addReservation,
     updateReservation,
     assignTable,
@@ -296,6 +291,7 @@ export function ReservationProvider({ children }: { children: ReactNode }) {
     cancelReservation,
     tableConflict: (tableId, date, time, excludeId) =>
       conflictIn(reservations, tableId, date, time, excludeId),
+    refreshReservations,
   };
 
   return (

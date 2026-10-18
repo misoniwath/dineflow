@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { cn } from "@/lib/utils";
-import { useFloor, ZONES } from "@/stores/FloorStore";
+import { useFloor } from "@/stores/FloorStore";
 import {
   FloorTable,
   TableInput,
@@ -36,7 +36,7 @@ export default function TableFormComponent({
   onSubmit: (input: TableInput) => void;
   onRemove: () => void;
 }) {
-  const { tables } = useFloor();
+  const { tables, zones } = useFloor();
 
   const shapeOptions: { value: TableShape; label: string }[] = [
     { value: "round", label: "Round" },
@@ -131,7 +131,7 @@ export default function TableFormComponent({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {ZONES.map((z) => (
+              {zones.map((z) => (
                 <SelectItem key={z} value={z}>
                   {z}
                 </SelectItem>

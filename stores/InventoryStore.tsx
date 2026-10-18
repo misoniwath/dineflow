@@ -12,15 +12,19 @@ import { InventoryItem, ItemInput, StockStatus } from "@/types/Inventory";
 import { Supplier } from "@/types/Supplier";
 import { MenuItem } from "@/types/Menu";
 import {
-  getInventoryItems,
-  saveInventoryItem,
-  deleteInventoryItem,
+  getInventoryItemsApi,
+  saveInventoryItemApi,
+  deleteInventoryItemApi,
 } from "@/lib/api/inventory";
-import { getMenuItems, saveMenuItem, deleteMenuItemApi } from "@/lib/api/menu";
 import {
-  getSuppliers,
-  saveSupplier,
-  deleteSupplier,
+  getMenuItemsApi,
+  saveMenuItemApi,
+  deleteMenuItemApi,
+} from "@/lib/api/menu";
+import {
+  getSuppliersApi,
+  saveSupplierApi,
+  deleteSupplierApi,
 } from "@/lib/api/suppliers";
 
 export const UNITS = [
@@ -50,7 +54,7 @@ type InventoryContextValue = {
   items: InventoryItem[];
   suppliers: Supplier[];
   menuItems: MenuItem[];
-  isLoading: boolean;
+  loading: boolean;
   addItem: (input: ItemInput) => Promise<void>;
   updateItem: (id: string, input: ItemInput) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
@@ -68,10 +72,10 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getInventoryItems(), getMenuItems(), getSuppliers()])
+    Promise.all([getInventoryItemsApi(), getMenuItemsApi(), getSuppliersApi()])
       .then(([invData, menuData, supplierData]) => {
         setItems(invData);
         setMenuItems(menuData);
@@ -80,27 +84,27 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       .catch((err) =>
         console.error("Failed to load inventory, menu, or supplier data", err),
       )
-      .finally(() => setIsLoading(false));
+      .finally(() => setLoading(false));
   }, []);
 
   const addItem = useCallback(async (input: ItemInput) => {
-    const newItem = await saveInventoryItem(input);
+    const newItem = await saveInventoryItemApi(input);
     setItems((prev) => [...prev, newItem]);
   }, []);
 
   const updateItem = useCallback(async (id: string, input: ItemInput) => {
-    const updated = await saveInventoryItem({ ...input, id });
+    const updated = await saveInventoryItemApi({ ...input, id });
     setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
   }, []);
 
   const removeItem = useCallback(async (id: string) => {
-    await deleteInventoryItem(id);
+    await deleteInventoryItemApi(id);
     setItems((prev) => prev.filter((i) => i.id !== id));
   }, []);
 
   const addSupplier = useCallback(
     async (supplierData: Omit<Supplier, "id">) => {
-      const saved = await saveSupplier(supplierData);
+      const saved = await saveSupplierApi(supplierData);
       setSuppliers((prev) => [...prev, saved]);
     },
     [],
@@ -108,24 +112,24 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
 
   const updateSupplier = useCallback(
     async (id: string, supplierData: Partial<Supplier>) => {
-      const saved = await saveSupplier({ ...supplierData, id });
+      const saved = await saveSupplierApi({ ...supplierData, id });
       setSuppliers((prev) => prev.map((s) => (s.id === id ? saved : s)));
     },
     [],
   );
 
   const removeSupplier = useCallback(async (id: string) => {
-    await deleteSupplier(id);
+    await deleteSupplierApi(id);
     setSuppliers((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
   const addMenuItem = useCallback(async (item: MenuItem) => {
-    const saved = await saveMenuItem(item);
+    const saved = await saveMenuItemApi(item);
     setMenuItems((prev) => [...prev, saved]);
   }, []);
 
   const updateMenuItem = useCallback(async (id: string, item: MenuItem) => {
-    const saved = await saveMenuItem({ ...item, id });
+    const saved = await saveMenuItemApi({ ...item, id });
     setMenuItems((prev) => prev.map((m) => (m.id === id ? saved : m)));
   }, []);
 
@@ -139,7 +143,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       items,
       suppliers,
       menuItems,
-      isLoading,
+      loading,
       addItem,
       updateItem,
       removeItem,
@@ -154,7 +158,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       items,
       suppliers,
       menuItems,
-      isLoading,
+      loading,
       addItem,
       updateItem,
       removeItem,
