@@ -3,7 +3,7 @@ import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import Link from "next/link";
 
 import { cn } from "@/lib/utils";
-import { STATUSES, STATUS_LABEL, ZONES, useFloor } from "@/stores/FloorStore";
+import { STATUSES, STATUS_LABEL, useFloor } from "@/stores/FloorStore";
 import { FloorTable, TableInput, TableStatus, Zone } from "@/types/Floor";
 
 import TableFormComponent from "@/components/floor/TableFormComponent";
@@ -25,72 +25,25 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, Minus, Pencil, Plus, Users } from "lucide-react";
-
-/* ------------------------------------------------------------------ */
-/* Constants + helpers                                                 */
-/* ------------------------------------------------------------------ */
-
-const clamp = (n: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, n));
-const round1 = (n: number) => Math.round(n * 10) / 10;
-
-// Same visual language as the Home page: free = outline, occupied = filled,
-// reserved = dashed. Cleaning adds an amber tint.
-const tableStyle: Record<TableStatus, string> = {
-  free: "border bg-card text-foreground hover:bg-muted",
-  occupied: "border border-primary bg-primary text-primary-foreground",
-  reserved: "border-2 border-dashed border-primary bg-card text-foreground",
-  cleaning: "border border-amber-500/60 bg-amber-500/15 text-foreground",
-};
-
-const swatchStyle: Record<TableStatus, string> = {
-  free: "border bg-card",
-  occupied: "border border-primary bg-primary",
-  reserved: "border border-dashed border-primary bg-card",
-  cleaning: "border border-amber-500/60 bg-amber-500/15",
-};
-
-const statusBadge: Record<TableStatus, string> = {
-  free: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-  occupied: "bg-primary text-primary-foreground",
-  reserved:
-    "border border-dashed border-primary bg-transparent text-foreground",
-  cleaning: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-};
-
-/** Fixed parts of each room, so the canvas reads as a floor plan. */
-const landmarks: Record<Zone, { label: string; className: string }[]> = {
-  "Main hall": [
-    { label: "Kitchen pass", className: "inset-x-16 top-0 h-6" },
-    {
-      label: "Entrance",
-      className: "bottom-0 left-1/2 h-6 w-40 -translate-x-1/2",
-    },
-  ],
-  Patio: [
-    {
-      label: "Doors to main hall",
-      className: "inset-y-16 left-0 w-6 [writing-mode:vertical-rl] rotate-180",
-    },
-  ],
-  Bar: [{ label: "Bar counter", className: "inset-x-8 top-0 h-8" }],
-};
-
-function tableBox(t: FloorTable) {
-  const base = t.seats <= 2 ? 64 : t.seats <= 4 ? 80 : 96;
-  return t.shape === "rect"
-    ? { width: Math.round(base * 1.6), height: base }
-    : { width: base, height: base };
-}
+import { Check, Loader2, Minus, Pencil, Plus, Users } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /* Floor plan view                                                     */
 /* ------------------------------------------------------------------ */
 export default function FloorPlanView() {
-  const { tables, addTable, updateTable, setStatus, removeTable } = useFloor();
+  const {
+    tables,
+    zones,
+    loading,
+    addTable,
+    updateTableLocal,
+    updateTable,
+    setStatus,
+    removeTable,
+    saveAllTables,
+  } = useFloor();
 
-  const [zone, setZone] = useState<Zone>(ZONES[0]);
+  const [zone, setZone] = useState<Zone>(zones[0]);
   const [editMode, setEditMode] = useState(false);
 
   // Status sheet
@@ -111,35 +64,82 @@ export default function FloorPlanView() {
     moved: boolean;
   } | null>(null);
 
+  // Same visual language as the Home page: free = outline, occupied = filled,
+  // reserved = dashed. Cleaning adds an amber tint.
+  const tableStyle: Record<TableStatus, string> = {
+    free: "border bg-card text-foreground hover:bg-muted",
+    occupied: "border border-primary bg-primary text-primary-foreground",
+    reserved: "border-2 border-dashed border-primary bg-card text-foreground",
+    cleaning: "border border-amber-500/60 bg-amber-500/15 text-foreground",
+  };
+
+  const swatchStyle: Record<TableStatus, string> = {
+    free: "border bg-card",
+    occupied: "border border-primary bg-primary",
+    reserved: "border border-dashed border-primary bg-card",
+    cleaning: "border border-amber-500/60 bg-amber-500/15",
+  };
+
+  const statusBadge: Record<TableStatus, string> = {
+    free: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+    occupied: "bg-primary text-primary-foreground",
+    reserved:
+      "border border-dashed border-primary bg-transparent text-foreground",
+    cleaning: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  };
+
   const zoneTables = tables.filter((t) => t.zone === zone);
   const countBy = (s: TableStatus) =>
     tables.filter((t) => t.status === s).length;
   const seatedGuests = tables.reduce((sum, t) => sum + t.guests, 0);
   const nextNumber = tables.reduce((max, t) => Math.max(max, t.number), 0) + 1;
 
+  /* ------------------------------------------------------------------ */
+  /* Constants + helpers                                                 */
+  /* ------------------------------------------------------------------ */
+  const clamp = (n: number, min: number, max: number) =>
+    Math.min(max, Math.max(min, n));
+
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+
+  const tableBox = (t: FloorTable) => {
+    const base = t.seats <= 2 ? 64 : t.seats <= 4 ? 80 : 96;
+    return t.shape === "rect"
+      ? { width: Math.round(base * 1.6), height: base }
+      : { width: base, height: base };
+  };
+
   /* Open things */
   function openDetails(t: FloorTable) {
-    setSelectedId(t.id);
+    setSelectedId(t.id || null);
     setSheetOpen(true);
   }
+
   function openAdd() {
     setEditing(null);
     setFormKey((k) => k + 1);
     setFormOpen(true);
   }
+
   function openEdit(t: FloorTable) {
     setEditing(t);
     setFormKey((k) => k + 1);
     setFormOpen(true);
   }
 
-  function handleSave(input: TableInput) {
-    if (editing) updateTable(editing.id, input);
-    else addTable(input);
+  async function handleSave(input: TableInput) {
+    if (editing && editing.id) {
+      await updateTable(editing.id, input);
+    } else {
+      await addTable(input);
+    }
     setFormOpen(false);
   }
-  function handleRemove() {
-    if (editing) removeTable(editing.id);
+
+  async function handleRemove() {
+    if (editing && editing.id) {
+      await removeTable(editing.id);
+    }
     setFormOpen(false);
   }
 
@@ -147,25 +147,30 @@ export default function FloorPlanView() {
   function onPointerDown(e: PointerEvent<HTMLButtonElement>, t: FloorTable) {
     if (!editMode) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = { id: t.id, sx: e.clientX, sy: e.clientY, moved: false };
+    if (t.id) {
+      drag.current = { id: t.id, sx: e.clientX, sy: e.clientY, moved: false };
+    }
   }
+
   function onPointerMove(e: PointerEvent<HTMLButtonElement>, t: FloorTable) {
     const d = drag.current;
     if (!d || d.id !== t.id || !canvasRef.current) return;
     if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 4) return;
     d.moved = true;
     const rect = canvasRef.current.getBoundingClientRect();
-    updateTable(t.id, {
+    updateTableLocal(t.id, {
       x: round1(clamp(((e.clientX - rect.left) / rect.width) * 100, 8, 92)),
       y: round1(clamp(((e.clientY - rect.top) / rect.height) * 100, 12, 88)),
     });
   }
+
   function onPointerUp(_e: PointerEvent<HTMLButtonElement>, t: FloorTable) {
     const d = drag.current;
     drag.current = null;
     // A press with no movement counts as a click: open the edit dialog.
     if (d && d.id === t.id && !d.moved) openEdit(t);
   }
+
   function onKeyDown(e: KeyboardEvent<HTMLButtonElement>, t: FloorTable) {
     if (!editMode) return;
     const moves: Record<string, [number, number]> = {
@@ -177,14 +182,25 @@ export default function FloorPlanView() {
     const delta = moves[e.key];
     if (delta) {
       e.preventDefault();
-      updateTable(t.id, {
-        x: clamp(t.x + delta[0], 8, 92),
-        y: clamp(t.y + delta[1], 12, 88),
-      });
+      if (t.id) {
+        updateTable(t.id, {
+          x: clamp(t.x + delta[0], 8, 92),
+          y: clamp(t.y + delta[1], 12, 88),
+        });
+      }
     } else if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       openEdit(t);
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-96 items-center justify-center gap-2 text-muted-foreground">
+        <Loader2 className="size-5 animate-spin" />
+        <span>Loading floor plan...</span>
+      </div>
+    );
   }
 
   return (
@@ -197,7 +213,7 @@ export default function FloorPlanView() {
           className="w-full lg:w-3/4"
         >
           <TabsList className="w-full">
-            {ZONES.map((z) => (
+            {zones.map((z) => (
               <TabsTrigger
                 key={z}
                 value={z}
@@ -223,7 +239,11 @@ export default function FloorPlanView() {
             size="sm"
             variant={editMode ? "default" : "outline"}
             aria-pressed={editMode}
-            onClick={() => {
+            onClick={async () => {
+              if (editMode) {
+                // Exiting edit mode: persist all current positions/changes to backend database
+                await saveAllTables();
+              }
               setEditMode((v) => !v);
               setSheetOpen(false);
             }}
@@ -274,18 +294,6 @@ export default function FloorPlanView() {
             backgroundSize: "24px 24px",
           }}
         >
-          {landmarks[zone].map((l) => (
-            <div
-              key={l.label}
-              className={cn(
-                "absolute flex items-center justify-center border border-dashed bg-muted/60 text-xs text-muted-foreground",
-                l.className,
-              )}
-            >
-              {l.label}
-            </div>
-          ))}
-
           {zoneTables.length === 0 && (
             <p className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
               No tables in this area yet.
@@ -364,7 +372,11 @@ export default function FloorPlanView() {
                         key={s}
                         variant={selected.status === s ? "default" : "outline"}
                         aria-pressed={selected.status === s}
-                        onClick={() => setStatus(selected.id, s)}
+                        onClick={() => {
+                          if (selected.id) {
+                            setStatus(selected.id, s);
+                          }
+                        }}
                       >
                         {STATUS_LABEL[s]}
                       </Button>
@@ -382,11 +394,13 @@ export default function FloorPlanView() {
                         className="size-8"
                         disabled={selected.guests <= 1}
                         aria-label="Remove one guest"
-                        onClick={() =>
-                          updateTable(selected.id, {
-                            guests: selected.guests - 1,
-                          })
-                        }
+                        onClick={() => {
+                          if (selected.id) {
+                            updateTable(selected.id, {
+                              guests: selected.guests - 1,
+                            });
+                          }
+                        }}
                       >
                         <Minus className="size-4" />
                       </Button>
@@ -399,11 +413,13 @@ export default function FloorPlanView() {
                         className="size-8"
                         disabled={selected.guests >= selected.seats}
                         aria-label="Add one guest"
-                        onClick={() =>
-                          updateTable(selected.id, {
-                            guests: selected.guests + 1,
-                          })
-                        }
+                        onClick={() => {
+                          if (selected.id) {
+                            updateTable(selected.id, {
+                              guests: selected.guests + 1,
+                            });
+                          }
+                        }}
                       >
                         <Plus className="size-4" />
                       </Button>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useFloor, ZONES } from "@/stores/FloorStore";
+import { useFloor } from "@/stores/FloorStore";
 import { useReservations, formatTime } from "@/stores/ReservationStore";
 import { cn } from "@/lib/utils";
 import { Reservation } from "@/types/Reservation";
@@ -28,7 +28,7 @@ export default function TablePickerComponent({
   reservation: Reservation;
   today: string;
 }) {
-  const { tables } = useFloor();
+  const { tables, zones } = useFloor();
   const { assignTable, tableConflict } = useReservations();
   const [open, setOpen] = useState(false);
 
@@ -67,7 +67,7 @@ export default function TablePickerComponent({
           <CommandInput placeholder="Search tables or areas" />
           <CommandList>
             <CommandEmpty>No tables found.</CommandEmpty>
-            {ZONES.map((zone) => {
+            {zones.map((zone) => {
               const inZone = tables
                 .filter((t) => t.zone === zone)
                 .sort((a, b) => a.number - b.number);
@@ -75,6 +75,7 @@ export default function TablePickerComponent({
               return (
                 <CommandGroup key={zone} heading={zone}>
                   {inZone.map((t) => {
+                    if (!t.id) return null;
                     const tooSmall = t.seats < reservation.party;
                     const clash = tableConflict(
                       t.id,
@@ -98,6 +99,7 @@ export default function TablePickerComponent({
                         value={`Table ${t.number} ${zone}`}
                         disabled={tooSmall || !!clash}
                         onSelect={() => {
+                          if (!t.id) return null;
                           assignTable(reservation.id, t.id);
                           setOpen(false);
                         }}

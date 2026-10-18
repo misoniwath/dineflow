@@ -5,6 +5,7 @@ const bcrypt = require("bcrypt");
 import { db } from "@/lib/db/index";
 import { users } from "@/lib/db/schema";
 import { CreateUserBody, UserRole } from "@/types/User";
+import { isAuthenticated } from "@/lib/auth/jwt";
 
 function sanitizeUser(row: typeof users.$inferSelect) {
   const { passwordHash, ...safe } = row;
@@ -12,6 +13,13 @@ function sanitizeUser(row: typeof users.$inferSelect) {
 }
 
 export async function GET(req: Request) {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 },
+    );
+  }
+
   const { searchParams } = new URL(req.url);
   const params = Object.fromEntries(searchParams.entries());
   const { q, role, status } = params;
@@ -47,6 +55,13 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     const body = (await req.json()) as Partial<CreateUserBody>;
 
     if (!body.name || !body.email || !body.password) {

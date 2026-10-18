@@ -79,22 +79,6 @@ function getInitials(name: string) {
     .join("");
 }
 
-function mapApiUserToRecord(user: User): User {
-  const role = (user as any).role as UserRole;
-  const isActive = Boolean((user as any).isActive);
-  return {
-    id: String((user as any).id),
-    name: String((user as any).name ?? ""),
-    email: String((user as any).email ?? ""),
-    role: role && role in ROLE_LABEL ? role : "staff",
-    lastLoginAt: String((user as any).lastLoginAt ?? "—"),
-    createdAt: String(
-      (user as any).createdAt ?? new Date().toISOString().slice(0, 10),
-    ),
-    isActive,
-  } as User;
-}
-
 export default function UserManagementView() {
   const [tab, setTab] = useState("users");
   const [view, setView] = useState<"list" | "card">("list");
@@ -127,7 +111,7 @@ export default function UserManagementView() {
       setLoading(true);
       setError(null);
       const data = await getUsers(params);
-      setUsers(data.map(mapApiUserToRecord));
+      setUsers(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to fetch users");
     } finally {
@@ -635,67 +619,65 @@ export default function UserManagementView() {
 
         <TabsContent value="roles" className="mt-0">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {(["owner", "manager", "cashier", "staff"] as UserRole[]).map(
-              (role) => {
-                const members = users.filter((user) => user.role === role);
-                const active = members.filter((user) => user.isActive).length;
+            {(["owner", "manager", "staff"] as UserRole[]).map((role) => {
+              const members = users.filter((user) => user.role === role);
+              const active = members.filter((user) => user.isActive).length;
 
-                return (
-                  <article
-                    key={role}
-                    className="flex flex-col gap-3 rounded-xl border bg-card p-4"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={cn(
-                            "size-2.5 rounded-full",
-                            role === "owner"
-                              ? "bg-violet-500"
-                              : role === "manager"
-                                ? "bg-cyan-500"
-                                : role === "cashier" || role === "staff"
-                                  ? "bg-amber-500"
-                                  : "bg-slate-500",
-                          )}
-                        />
-                        <h3 className="text-sm font-medium">
-                          {ROLE_LABEL[role]}
-                        </h3>
-                      </div>
-                      <Badge
+              return (
+                <article
+                  key={role}
+                  className="flex flex-col gap-3 rounded-xl border bg-card p-4"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div
                         className={cn(
-                          "rounded-full font-normal",
-                          roleBadge[role],
+                          "size-2.5 rounded-full",
+                          role === "owner"
+                            ? "bg-violet-500"
+                            : role === "manager"
+                              ? "bg-cyan-500"
+                              : role === "staff"
+                                ? "bg-amber-500"
+                                : "bg-slate-500",
                         )}
-                      >
-                        {active} active
-                      </Badge>
+                      />
+                      <h3 className="text-sm font-medium">
+                        {ROLE_LABEL[role]}
+                      </h3>
                     </div>
-
-                    <p className="text-sm text-muted-foreground">
-                      {members.length}{" "}
-                      {members.length === 1 ? "member" : "members"}
-                    </p>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-auto self-start"
-                      onClick={() => {
-                        setRoleFilter([role]);
-                        setStatusFilter([]);
-                        setQuery("");
-                        setPage(1);
-                        setTab("users");
-                      }}
+                    <Badge
+                      className={cn(
+                        "rounded-full font-normal",
+                        roleBadge[role],
+                      )}
                     >
-                      View users
-                    </Button>
-                  </article>
-                );
-              },
-            )}
+                      {active} active
+                    </Badge>
+                  </div>
+
+                  <p className="text-sm text-muted-foreground">
+                    {members.length}{" "}
+                    {members.length === 1 ? "member" : "members"}
+                  </p>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-auto self-start"
+                    onClick={() => {
+                      setRoleFilter([role]);
+                      setStatusFilter([]);
+                      setQuery("");
+                      setPage(1);
+                      setTab("users");
+                    }}
+                  >
+                    View users
+                  </Button>
+                </article>
+              );
+            })}
           </div>
         </TabsContent>
       </Tabs>

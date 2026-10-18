@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db/index";
 import { menuItems, menuInventoryItems } from "@/lib/db/schema";
+import { isAuthenticated } from "@/lib/auth/jwt";
 import { eq, sql } from "drizzle-orm";
 
 export async function GET() {
   try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     // 1. Fetch all menu items
     const allMenuItems = await db.select().from(menuItems);
 
@@ -37,6 +45,13 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     const body = await request.json();
     const { id, name, price, image, desc, category, ingredients } = body;
 
@@ -113,6 +128,13 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 

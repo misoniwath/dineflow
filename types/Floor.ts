@@ -1,6 +1,4 @@
-import { ZONES } from "@/stores/FloorStore";
-
-export type Zone = (typeof ZONES)[number];
+export type Zone = "Main Hall" | "Patio" | "Bar";
 
 export type TableStatus = "free" | "occupied" | "reserved" | "cleaning";
 
@@ -14,7 +12,7 @@ export type FormState = {
 };
 
 export type FloorTable = {
-  id: string;
+  id?: string;
   number: number;
   seats: number;
   shape: TableShape;

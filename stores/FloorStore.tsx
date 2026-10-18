@@ -3,16 +3,22 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
-import { FloorTable, TableInput, TableStatus } from "@/types/Floor";
+import { FloorTable, TableInput, TableStatus, Zone } from "@/types/Floor";
+import {
+  getFloorTables,
+  addFloorTable,
+  updateFloorTable,
+  deleteFloorTable,
+} from "@/lib/api/floors";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
-export const ZONES = ["Main hall", "Patio", "Bar"] as const;
 export const STATUS_LABEL: Record<TableStatus, string> = {
   free: "Free",
   occupied: "Occupied",
@@ -22,188 +28,101 @@ export const STATUS_LABEL: Record<TableStatus, string> = {
 export const STATUSES = Object.keys(STATUS_LABEL) as TableStatus[];
 
 /* ------------------------------------------------------------------ */
-/* Seed data                                                           */
-/* ------------------------------------------------------------------ */
-const seed: FloorTable[] = [
-  {
-    id: "t1",
-    number: 1,
-    seats: 2,
-    shape: "round",
-    zone: "Main hall",
-    x: 14,
-    y: 26,
-    status: "occupied",
-    guests: 2,
-  },
-  {
-    id: "t2",
-    number: 2,
-    seats: 2,
-    shape: "round",
-    zone: "Main hall",
-    x: 14,
-    y: 56,
-    status: "free",
-    guests: 0,
-  },
-  {
-    id: "t3",
-    number: 3,
-    seats: 4,
-    shape: "square",
-    zone: "Main hall",
-    x: 38,
-    y: 26,
-    status: "reserved",
-    guests: 0,
-  },
-  {
-    id: "t4",
-    number: 4,
-    seats: 4,
-    shape: "square",
-    zone: "Main hall",
-    x: 38,
-    y: 56,
-    status: "occupied",
-    guests: 3,
-  },
-  {
-    id: "t5",
-    number: 5,
-    seats: 6,
-    shape: "rect",
-    zone: "Main hall",
-    x: 68,
-    y: 28,
-    status: "free",
-    guests: 0,
-  },
-  {
-    id: "t6",
-    number: 6,
-    seats: 6,
-    shape: "rect",
-    zone: "Main hall",
-    x: 68,
-    y: 60,
-    status: "occupied",
-    guests: 5,
-  },
-  {
-    id: "t7",
-    number: 7,
-    seats: 4,
-    shape: "square",
-    zone: "Main hall",
-    x: 38,
-    y: 82,
-    status: "free",
-    guests: 0,
-  },
-  {
-    id: "t8",
-    number: 8,
-    seats: 4,
-    shape: "round",
-    zone: "Patio",
-    x: 24,
-    y: 36,
-    status: "reserved",
-    guests: 0,
-  },
-  {
-    id: "t9",
-    number: 9,
-    seats: 4,
-    shape: "round",
-    zone: "Patio",
-    x: 52,
-    y: 62,
-    status: "free",
-    guests: 0,
-  },
-  {
-    id: "t10",
-    number: 10,
-    seats: 4,
-    shape: "round",
-    zone: "Patio",
-    x: 78,
-    y: 34,
-    status: "occupied",
-    guests: 3,
-  },
-  {
-    id: "t11",
-    number: 11,
-    seats: 2,
-    shape: "round",
-    zone: "Bar",
-    x: 24,
-    y: 55,
-    status: "free",
-    guests: 0,
-  },
-  {
-    id: "t12",
-    number: 12,
-    seats: 2,
-    shape: "round",
-    zone: "Bar",
-    x: 50,
-    y: 55,
-    status: "free",
-    guests: 0,
-  },
-];
-
-/* ------------------------------------------------------------------ */
 /* Context                                                             */
 /* ------------------------------------------------------------------ */
 type FloorContextValue = {
   tables: FloorTable[];
-  addTable: (input: TableInput) => FloorTable;
-  updateTable: (id: string, patch: Partial<Omit<FloorTable, "id">>) => void;
-  setStatus: (id: string, status: TableStatus) => void;
-  removeTable: (id: string) => void;
+  zones: Zone[];
+  loading: boolean;
+  saveAllTables: () => Promise<void>;
+  addTable: (input: TableInput) => Promise<FloorTable>;
+  updateTableLocal: (
+    id: string,
+    patch: Partial<Omit<FloorTable, "id">>,
+  ) => void;
+  updateTable: (
+    id: string,
+    patch: Partial<Omit<FloorTable, "id">>,
+  ) => Promise<void>;
+  setStatus: (id: string, status: TableStatus) => Promise<void>;
+  removeTable: (id: string) => Promise<void>;
+  refreshTables: () => Promise<void>;
 };
 
 const FloorContext = createContext<FloorContextValue | null>(null);
 
-function newId() {
-  return `table-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 export function FloorProvider({ children }: { children: ReactNode }) {
-  const [tables, setTables] = useState<FloorTable[]>(seed);
+  const [tables, setTables] = useState<FloorTable[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [zones, setZones] = useState<Zone[]>(["Main Hall"]);
 
-  const addTable = useCallback((input: TableInput) => {
-    let created!: FloorTable;
-    setTables((prev) => {
-      const inZone = prev.filter((t) => t.zone === input.zone).length;
-      created = {
-        ...input,
-        id: newId(),
-        // Stagger new tables so they don't stack on top of each other
-        x: 20 + ((inZone * 13) % 60),
-        y: 25 + ((inZone * 17) % 50),
-        status: "free",
-        guests: 0,
-      };
-      return [...prev, created];
-    });
-    return created;
+  const loadZones = (tables: FloorTable[]) => {
+    const uniqueZones = Array.from(new Set(tables.map((t) => t.zone)));
+    setZones(uniqueZones as Zone[]);
+  };
+
+  const refreshTables = useCallback(async () => {
+    try {
+      const data = await getFloorTables();
+      setTables(data);
+      loadZones(data);
+    } catch (error) {
+      console.error("Failed to load floor tables:", error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const updateTable = useCallback(
+  useEffect(() => {
+    refreshTables();
+  }, [refreshTables]);
+
+  const addTable = useCallback(
+    async (input: TableInput) => {
+      // Calculate layout coordinates locally for immediate use
+      const inZone = tables.filter((t) => t.zone === input.zone).length;
+
+      // Temporary optimistic object with a temporary tracking key
+      const tempKeyId = `temp-${Date.now()}`;
+      const payload = {
+        ...input,
+        id: tempKeyId,
+        x: 20 + ((inZone * 13) % 60),
+        y: 25 + ((inZone * 17) % 50),
+        status: "free" as TableStatus,
+        guests: 0,
+      };
+
+      // Optimistic update
+      setTables((prev) => [...prev, payload]);
+
+      try {
+        // Send payload without temp ID so PostgreSQL/API generates the real ID
+        const { id, ...inputWithoutId } = payload;
+        const saved = await addFloorTable(inputWithoutId);
+
+        // Replace the temporary item with the database-returned record (containing the real ID)
+        setTables((prev) => prev.map((t) => (t.id === tempKeyId ? saved : t)));
+        return saved;
+      } catch (error) {
+        console.error("Failed to add table:", error);
+        refreshTables(); // Revert on failure
+        throw error;
+      }
+    },
+    [tables, refreshTables],
+  );
+
+  // Local-only state change during dragging/editing
+  const updateTableLocal = useCallback(
     (id: string, patch: Partial<Omit<FloorTable, "id">>) => {
       setTables((prev) =>
         prev.map((t) => {
           if (t.id !== id) return t;
           const next = { ...t, ...patch };
-          next.guests = Math.min(next.guests, next.seats);
+          if (next.guests !== undefined) {
+            next.guests = Math.min(next.guests, next.seats);
+          }
           return next;
         }),
       );
@@ -211,27 +130,109 @@ export function FloorProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const setStatus = useCallback((id: string, status: TableStatus) => {
-    setTables((prev) =>
-      prev.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              status,
-              guests: status === "occupied" ? Math.max(1, t.guests) : 0,
-            }
-          : t,
-      ),
-    );
-  }, []);
+  // API-backed update for single property changes (like status sheet clicks)
+  const updateTable = useCallback(
+    async (id: string, patch: Partial<Omit<FloorTable, "id">>) => {
+      updateTableLocal(id, patch);
+      try {
+        const targetTable = tables.find((t) => t.id === id);
+        if (targetTable) {
+          await updateFloorTable({ ...targetTable, ...patch });
+        }
+      } catch (error) {
+        console.error("Failed to update table:", error);
+        refreshTables();
+      }
+    },
+    [tables, updateTableLocal, refreshTables],
+  );
 
-  const removeTable = useCallback((id: string) => {
-    setTables((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+  const saveAllTables = useCallback(async () => {
+    try {
+      await Promise.all(
+        tables.map((t) =>
+          updateFloorTable({
+            id: t.id,
+            number: t.number,
+            seats: t.seats,
+            shape: t.shape,
+            zone: t.zone,
+            x: t.x,
+            y: t.y,
+            status: t.status,
+            guests: t.guests,
+          }),
+        ),
+      );
+    } catch (error) {
+      console.error("Failed to batch save tables:", error);
+      refreshTables(); // Revert on failure
+    }
+  }, [tables, refreshTables]);
+
+  const setStatus = useCallback(
+    async (id: string, status: TableStatus) => {
+      let targetTable = tables.find((t) => t.id === id);
+      if (!targetTable) return;
+
+      const guests =
+        status === "occupied" ? Math.max(1, targetTable.guests) : 0;
+
+      // Optimistic update
+      setTables((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, status, guests } : t)),
+      );
+
+      try {
+        await updateFloorTable({ id, ...targetTable, status, guests });
+      } catch (error) {
+        console.error("Failed to update table status:", error);
+        refreshTables();
+      }
+    },
+    [tables, refreshTables],
+  );
+
+  const removeTable = useCallback(
+    async (id: string) => {
+      // Optimistic update
+      setTables((prev) => prev.filter((t) => t.id !== id));
+
+      try {
+        await deleteFloorTable(id);
+      } catch (error) {
+        console.error("Failed to delete table:", error);
+        refreshTables();
+      }
+    },
+    [refreshTables],
+  );
 
   const value = useMemo(
-    () => ({ tables, addTable, updateTable, setStatus, removeTable }),
-    [tables, addTable, updateTable, setStatus, removeTable],
+    () => ({
+      tables,
+      zones,
+      loading,
+      saveAllTables,
+      addTable,
+      updateTableLocal,
+      updateTable,
+      setStatus,
+      removeTable,
+      refreshTables,
+    }),
+    [
+      tables,
+      zones,
+      loading,
+      saveAllTables,
+      addTable,
+      updateTableLocal,
+      updateTable,
+      setStatus,
+      removeTable,
+      refreshTables,
+    ],
   );
 
   return (

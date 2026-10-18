@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
+import { cookies } from "next/headers";
 
 const secretKey = new TextEncoder().encode(process.env.JWT_SECRET);
 
@@ -23,4 +24,12 @@ export async function verifyToken(token: string) {
   } catch {
     return null; // Token is invalid or expired
   }
+}
+
+export async function isAuthenticated() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("auth_token")?.value;
+  if (!token) return false;
+  const payload = await verifyToken(token);
+  return Boolean(payload);
 }

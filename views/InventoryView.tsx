@@ -39,7 +39,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LayoutGrid, List, Plus, Search, Trash2 } from "lucide-react";
+import { LayoutGrid, List, Plus, Search, Trash2, Loader2 } from "lucide-react";
 
 const PAGE_SIZE = 10;
 
@@ -64,6 +64,7 @@ const qty = (n: number, unit: string) => `${qtyFmt.format(n)} ${unit}`;
 
 export default function InventoryView() {
   const {
+    loading: isInventoryLoading,
     items,
     suppliers,
     menuItems,
@@ -122,6 +123,8 @@ export default function InventoryView() {
 
   const [menuDeleteOpen, setMenuDeleteOpen] = useState(false);
   const [deletingMenu, setDeletingMenu] = useState<MenuItem | null>(null);
+
+  const loading = isInventoryLoading;
 
   const openAdd = () => {
     setEditing(null);
@@ -257,7 +260,7 @@ export default function InventoryView() {
     count: items.filter((i) => i.supplierId === s.id).length,
   }));
 
-  const rows = useMemo(() => {
+  const inventoryRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items
       .filter((i) => {
@@ -276,12 +279,27 @@ export default function InventoryView() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [items, query, statusFilter, supplierFilter, supplierName]);
 
+  const menuRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return menuItems
+      .filter((m) => {
+        if (
+          q &&
+          !m.name.toLowerCase().includes(q) &&
+          !m.category?.toLowerCase().includes(q)
+        )
+          return false;
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [menuItems, query]);
+
   const filtersActive =
     query.trim() !== "" || statusFilter.length > 0 || supplierFilter.length > 0;
-  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(inventoryRows.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const start = (currentPage - 1) * PAGE_SIZE;
-  const pageRows = rows.slice(start, start + PAGE_SIZE);
+  const pageRows = inventoryRows.slice(start, start + PAGE_SIZE);
 
   const firstPageBtn = Math.max(1, Math.min(currentPage - 2, pageCount - 4));
   const pageButtons = Array.from(
@@ -294,6 +312,15 @@ export default function InventoryView() {
     setStatusFilter([]);
     setSupplierFilter([]);
     setPage(1);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-96 items-center justify-center gap-2 text-muted-foreground">
+        <Loader2 className="size-5 animate-spin" />
+        <span>Loading inventory...</span>
+      </div>
+    );
   }
 
   return (
@@ -443,7 +470,7 @@ export default function InventoryView() {
             </div>
           </div>
 
-          {rows.length === 0 ? (
+          {inventoryRows.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
               <div className="space-y-1">
                 <p className="text-sm font-medium">
@@ -599,10 +626,11 @@ export default function InventoryView() {
             </div>
           )}
 
-          {rows.length > 0 && (
+          {inventoryRows.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
               <span className="tabular-nums">
-                Showing {start + 1}–{start + pageRows.length} of {rows.length}
+                Showing {start + 1}–{start + pageRows.length} of{" "}
+                {inventoryRows.length}
               </span>
               {pageCount > 1 && (
                 <div className="flex items-center gap-1">
@@ -766,7 +794,7 @@ export default function InventoryView() {
             </div>
           </div>
 
-          {menuItems.length === 0 ? (
+          {menuRows.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
               <div className="space-y-1">
                 <p className="text-sm font-medium">No menu items yet</p>
@@ -795,7 +823,7 @@ export default function InventoryView() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {menuItems.map((m) => (
+                  {menuRows.map((m) => (
                     <TableRow key={m.id}>
                       <TableCell className="font-medium">{m.name}</TableCell>
                       <TableCell>{m.category}</TableCell>
