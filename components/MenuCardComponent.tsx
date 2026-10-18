@@ -1,4 +1,4 @@
-import { MenuItem } from "@/types/MenuItem";
+import { MenuItem } from "@/types/Menu";
 
 import { cn } from "@/lib/utils";
 

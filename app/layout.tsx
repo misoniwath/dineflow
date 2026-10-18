@@ -2,10 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "@/styles/globals.css";
 import { ThemeProvider } from "next-themes";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppProvider } from "@/stores/AppStore";
-import SidebarComponent from "@/components/SidebarComponent";
-import HeaderComponent from "@/components/HeaderComponent";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,14 +30,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <AppProvider>
-            <SidebarProvider>
-              <SidebarComponent />
-
-              <SidebarInset>
-                <HeaderComponent />
-                <main className="flex-1 p-4">{children}</main>
-              </SidebarInset>
-            </SidebarProvider>
+            <main className="flex-1 p-4">{children}</main>
           </AppProvider>
         </ThemeProvider>
       </body>

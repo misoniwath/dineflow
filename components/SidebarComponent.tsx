@@ -1,7 +1,10 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
+import { useAuth } from "@/stores/AuthStore";
+
+import { LogOut } from "lucide-react";
 import {
   Sidebar,
   SidebarHeader,
@@ -18,6 +21,24 @@ import { navItems } from "@/lib/navItems";
 
 export default function SidebarComponent() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout } = useAuth();
+  const logoutAndRedirect = async () => {
+    await logout();
+    router.push("/login");
+  };
+
+  const currentRole = user?.role || "guest";
+
+  // Filter items based on user role
+  const filteredNavItems = navItems.filter((item) => {
+    // If no roles are specified, item is public/available to all
+    if (!item.roles) return true;
+
+    // Otherwise, check if the user's role is included in the allowed list
+    return item.roles.includes(currentRole);
+  });
+
   return (
     <Sidebar>
       <SidebarHeader>
@@ -38,7 +59,7 @@ export default function SidebarComponent() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
+              {filteredNavItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     isActive={pathname === item.href}
@@ -50,6 +71,16 @@ export default function SidebarComponent() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => logoutAndRedirect()}
+                  className="flex items-center gap-2 min-h-14 text-md text-destructive hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <LogOut className="size-4" />
+                  <span>Log out</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
