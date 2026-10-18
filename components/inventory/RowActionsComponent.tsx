@@ -1,5 +1,3 @@
-import { InventoryItem } from "@/types/Inventory";
-
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
 
@@ -8,9 +6,9 @@ export default function RowActionsComponent({
   onEdit,
   onDelete,
 }: {
-  item: InventoryItem;
-  onEdit: (item: InventoryItem) => void;
-  onDelete: (item: InventoryItem) => void;
+  item: any;
+  onEdit: (item: any) => void;
+  onDelete: (item: any) => void;
 }) {
   return (
     <div className="flex items-center justify-end gap-1">

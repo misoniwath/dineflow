@@ -3,10 +3,16 @@ import { useState } from "react";
 
 import { cn, money } from "@/lib/utils";
 
-import { MenuItem } from "@/types/MenuItem";
-import { Tickets } from "@/types/Tickets";
+import { useOrder } from "@/stores/OrderStore";
 
-import { Minus, Plus, Grid, CreditCard, ShoppingBag } from "lucide-react";
+import {
+  Minus,
+  Plus,
+  Grid,
+  CreditCard,
+  ShoppingBag,
+  Loader2,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,58 +27,39 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MenuCardComponent from "@/components/MenuCardComponent";
 
-const menu: Record<string, MenuItem[]> = {
-  Starters: [
-    {
-      id: "s1",
-      name: "Charred shishito peppers",
-      price: 9,
-      image: "/images/s1.jpg",
-      desc: "Smoky, charred peppers with sea salt",
-    },
-    {
-      id: "s2",
-      name: "Burrata & heirloom tomato",
-      price: 12,
-      image: "/images/s2.jpg",
-      desc: "Creamy burrata, ripe tomatoes, basil",
-    },
-    {
-      id: "s3",
-      name: "Soup of the day",
-      price: 7,
-      image: "/images/s3.jpg",
-      desc: "Ask your server for today's selection",
-    },
-  ],
-  Mains: [],
-  Drinks: [],
-  Dessert: [],
-};
-
-const categories = Object.keys(menu);
 const tables = Array.from({ length: 12 }, (_, i) => i + 1);
-const itemsById = Object.fromEntries(
-  Object.values(menu)
-    .flat()
-    .map((item) => [item.id, item]),
-);
 
 /* ------------------------------------------------------------------ */
 /* Order view                                                          */
 /* ------------------------------------------------------------------ */
 export default function OrderView() {
-  const [category, setCategory] = useState<string>(categories[0]);
+  const {
+    menu,
+    itemsById,
+    categories,
+    tickets,
+    setTickets,
+    sendOrderToKitchen,
+    isLoading,
+  } = useOrder();
+
+  const [category, setCategory] = useState<string>("");
   const [table, setTable] = useState<number>(4);
-  const [tickets, setTickets] = useState<Tickets>({});
   const [viewMode, setViewMode] = useState<"table" | "card">("table");
   const [cartOpen, setCartOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Default to the first available category once the menu is loaded
+  const activeCategory = category || categories[0];
 
   const ticket = tickets[table] ?? {};
-  const lines = Object.entries(ticket).map(([id, qty]) => ({
-    item: itemsById[id],
-    qty,
-  }));
+  const lines = Object.entries(ticket)
+    .map(([id, qty]) => ({
+      item: itemsById[id],
+      qty,
+    }))
+    .filter((l) => l.item != null); // Ensure item exists in catalog
+
   const itemCount = lines.reduce((sum, l) => sum + l.qty, 0);
   const total = lines.reduce((sum, l) => sum + l.item.price * l.qty, 0);
 
@@ -86,21 +73,36 @@ export default function OrderView() {
     });
   }
 
-  function sendToKitchen() {
-    // TODO: POST the ticket to your API here
-    setTickets((prev) => ({ ...prev, [table]: {} }));
-    setCartOpen(false);
+  async function handleSendToKitchen() {
+    try {
+      setIsSubmitting(true);
+      await sendOrderToKitchen(table);
+      setCartOpen(false);
+    } catch (error) {
+      console.error("Failed to send order:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex h-96 items-center justify-center gap-2 text-muted-foreground">
+        <Loader2 className="size-5 animate-spin" />
+        <span>Loading menu...</span>
+      </div>
+    );
   }
 
   return (
     <Tabs
-      value={category}
+      value={activeCategory}
       onValueChange={(v) => setCategory(String(v))}
       className="space-y-6"
     >
       {/* Top bar: category tabs + cart trigger */}
       <div className="flex flex-col lg:flex-row items-end lg:items-center justify-between gap-3">
-        <TabsList className="h-auto w-full lg:w-3/4 justify-start rounded-lg bg-muted p-1 ">
+        <TabsList className="h-auto w-full lg:w-3/4 justify-start rounded-lg bg-muted p-1">
           {categories.map((c) => (
             <TabsTrigger
               key={c}
@@ -109,7 +111,7 @@ export default function OrderView() {
             >
               <span className="truncate">{c}</span>
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                {menu[c].length}
+                {menu[c]?.length ?? 0}
               </span>
             </TabsTrigger>
           ))}
@@ -117,20 +119,18 @@ export default function OrderView() {
 
         {/* Cart sheet */}
         <Sheet open={cartOpen} onOpenChange={setCartOpen}>
-          <SheetTrigger asChild>
-            <Button variant="outline" className="gap-2">
-              <ShoppingBag className="size-4" />
+          <SheetTrigger render={<Button variant="outline" className="gap-2" />}>
+            <ShoppingBag className="size-4" />
 
-              <span>Table {table}</span>
+            <span>Table {table}</span>
 
-              <Badge variant="secondary" className="rounded-full tabular-nums">
-                {itemCount}
-              </Badge>
+            <Badge variant="secondary" className="rounded-full tabular-nums">
+              {itemCount}
+            </Badge>
 
-              <span className="hidden border-l pl-2 tabular-nums sm:inline">
-                {money.format(total)}
-              </span>
-            </Button>
+            <span className="hidden border-l pl-2 tabular-nums sm:inline">
+              {money.format(total)}
+            </span>
           </SheetTrigger>
 
           <SheetContent
@@ -231,9 +231,11 @@ export default function OrderView() {
                       >
                         <Minus className="size-3" />
                       </Button>
+
                       <span className="w-4 text-center tabular-nums">
                         {qty}
                       </span>
+
                       <Button
                         variant="outline"
                         size="icon"
@@ -280,9 +282,11 @@ export default function OrderView() {
                           >
                             <Minus className="size-3" />
                           </Button>
+
                           <span className="w-4 text-center text-sm tabular-nums">
                             {qty}
                           </span>
+
                           <Button
                             variant="outline"
                             size="icon"
@@ -310,18 +314,21 @@ export default function OrderView() {
                   {money.format(total)}
                 </span>
               </div>
-              <Button disabled={itemCount === 0} onClick={sendToKitchen}>
-                Send to kitchen
+              <Button
+                disabled={itemCount === 0 || isSubmitting}
+                onClick={handleSendToKitchen}
+              >
+                {isSubmitting ? "Sending..." : "Send to kitchen"}
               </Button>
             </SheetFooter>
           </SheetContent>
         </Sheet>
       </div>
 
-      {/* One tab panel per category */}
+      {/* One tab panel per dynamic category */}
       {categories.map((c) => (
         <TabsContent key={c} value={c} className="mt-0">
-          {menu[c].length === 0 ? (
+          {!menu[c] || menu[c].length === 0 ? (
             <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               No {c.toLowerCase()} on the menu yet.
             </p>

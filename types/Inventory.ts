@@ -1,5 +1,3 @@
-export type Supplier = { id: string; name: string };
-
 export type InventoryItem = {
   id: string;
   name: string;

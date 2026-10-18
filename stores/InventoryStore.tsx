@@ -3,20 +3,26 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
+import { InventoryItem, ItemInput, StockStatus } from "@/types/Inventory";
+import { Supplier } from "@/types/Supplier";
+import { MenuItem } from "@/types/Menu";
 import {
-  InventoryItem,
-  ItemInput,
-  StockStatus,
-  Supplier,
-} from "@/types/Inventory";
+  getInventoryItems,
+  saveInventoryItem,
+  deleteInventoryItem,
+} from "@/lib/api/inventory";
+import { getMenuItems, saveMenuItem, deleteMenuItemApi } from "@/lib/api/menu";
+import {
+  getSuppliers,
+  saveSupplier,
+  deleteSupplier,
+} from "@/lib/api/suppliers";
 
-/* ------------------------------------------------------------------ */
-/* Types                                                               */
-/* ------------------------------------------------------------------ */
 export const UNITS = [
   "pc",
   "lb",
@@ -34,165 +40,131 @@ export const STATUS_LABEL: Record<StockStatus, string> = {
   out: "Out of stock",
 };
 
-/** Status is derived from the numbers, so it never goes out of sync. */
 export function getStatus(item: InventoryItem): StockStatus {
   if (item.onHand <= 0) return "out";
   if (item.onHand <= item.lowAt) return "low";
   return "at-par";
 }
 
-/* ------------------------------------------------------------------ */
-/* Seed data                                                           */
-/* ------------------------------------------------------------------ */
-const seedSuppliers: Supplier[] = [
-  { id: "bellwood", name: "Bellwood Distributors" },
-  { id: "coastal", name: "Coastal Seafood Co." },
-  { id: "green", name: "Green Valley Farms" },
-  { id: "milano", name: "Milano Dry Goods" },
-  { id: "riverside", name: "Riverside Meats" },
-];
-
-const seedItems: InventoryItem[] = [
-  {
-    id: "i1",
-    name: "Arborio rice",
-    unit: "lb",
-    onHand: 22,
-    par: 25,
-    lowAt: 8,
-    expires: "2027-03-02",
-    supplierId: "milano",
-  },
-  {
-    id: "i2",
-    name: "Burrata",
-    unit: "pc",
-    onHand: 14,
-    par: 20,
-    lowAt: 6,
-    expires: "2026-10-22",
-    supplierId: "green",
-  },
-  {
-    id: "i3",
-    name: "Chicken breast",
-    unit: "lb",
-    onHand: 0,
-    par: 35,
-    lowAt: 10,
-    expires: null,
-    supplierId: "riverside",
-  },
-  {
-    id: "i4",
-    name: "Dried pappardelle",
-    unit: "lb",
-    onHand: 14,
-    par: 20,
-    lowAt: 6,
-    expires: "2027-05-18",
-    supplierId: "milano",
-  },
-  {
-    id: "i5",
-    name: "Heirloom tomato",
-    unit: "lb",
-    onHand: 6,
-    par: 30,
-    lowAt: 10,
-    expires: "2026-10-18",
-    supplierId: "green",
-  },
-  {
-    id: "i6",
-    name: "House red wine",
-    unit: "btl",
-    onHand: 18,
-    par: 24,
-    lowAt: 6,
-    expires: null,
-    supplierId: "bellwood",
-  },
-  {
-    id: "i7",
-    name: "IPA keg",
-    unit: "keg",
-    onHand: 1,
-    par: 4,
-    lowAt: 2,
-    expires: "2026-11-20",
-    supplierId: "bellwood",
-  },
-  {
-    id: "i8",
-    name: "Parmigiano",
-    unit: "lb",
-    onHand: 9,
-    par: 10,
-    lowAt: 3,
-    expires: "2027-01-08",
-    supplierId: "milano",
-  },
-  {
-    id: "i9",
-    name: "Salmon fillet",
-    unit: "pc",
-    onHand: 34,
-    par: 50,
-    lowAt: 15,
-    expires: "2026-10-17",
-    supplierId: "coastal",
-  },
-  {
-    id: "i10",
-    name: "Shishito peppers",
-    unit: "lb",
-    onHand: 11,
-    par: 15,
-    lowAt: 4,
-    expires: "2026-10-19",
-    supplierId: "green",
-  },
-];
-
-/* ------------------------------------------------------------------ */
-/* Context                                                             */
-/* ------------------------------------------------------------------ */
 type InventoryContextValue = {
   items: InventoryItem[];
   suppliers: Supplier[];
-  addItem: (input: ItemInput) => InventoryItem;
-  updateItem: (id: string, input: ItemInput) => void;
-  removeItem: (id: string) => void;
+  menuItems: MenuItem[];
+  isLoading: boolean;
+  addItem: (input: ItemInput) => Promise<void>;
+  updateItem: (id: string, input: ItemInput) => Promise<void>;
+  removeItem: (id: string) => Promise<void>;
+  addSupplier: (supplier: Omit<Supplier, "id">) => Promise<void>;
+  updateSupplier: (id: string, supplier: Partial<Supplier>) => Promise<void>;
+  removeSupplier: (id: string) => Promise<void>;
+  addMenuItem: (item: MenuItem) => Promise<void>;
+  updateMenuItem: (id: string, item: MenuItem) => Promise<void>;
+  removeMenuItem: (id: string) => Promise<void>;
 };
 
 const InventoryContext = createContext<InventoryContextValue | null>(null);
 
-function newId() {
-  return `item-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 export function InventoryProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<InventoryItem[]>(seedItems);
-  const [suppliers] = useState<Supplier[]>(seedSuppliers);
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const addItem = useCallback((input: ItemInput) => {
-    const item = { ...input, id: newId() };
-    setItems((prev) => [...prev, item]);
-    return item;
+  useEffect(() => {
+    Promise.all([getInventoryItems(), getMenuItems(), getSuppliers()])
+      .then(([invData, menuData, supplierData]) => {
+        setItems(invData);
+        setMenuItems(menuData);
+        setSuppliers(supplierData);
+      })
+      .catch((err) =>
+        console.error("Failed to load inventory, menu, or supplier data", err),
+      )
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const updateItem = useCallback((id: string, input: ItemInput) => {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...input, id } : i)));
+  const addItem = useCallback(async (input: ItemInput) => {
+    const newItem = await saveInventoryItem(input);
+    setItems((prev) => [...prev, newItem]);
   }, []);
 
-  const removeItem = useCallback((id: string) => {
+  const updateItem = useCallback(async (id: string, input: ItemInput) => {
+    const updated = await saveInventoryItem({ ...input, id });
+    setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
+  }, []);
+
+  const removeItem = useCallback(async (id: string) => {
+    await deleteInventoryItem(id);
     setItems((prev) => prev.filter((i) => i.id !== id));
   }, []);
 
+  const addSupplier = useCallback(
+    async (supplierData: Omit<Supplier, "id">) => {
+      const saved = await saveSupplier(supplierData);
+      setSuppliers((prev) => [...prev, saved]);
+    },
+    [],
+  );
+
+  const updateSupplier = useCallback(
+    async (id: string, supplierData: Partial<Supplier>) => {
+      const saved = await saveSupplier({ ...supplierData, id });
+      setSuppliers((prev) => prev.map((s) => (s.id === id ? saved : s)));
+    },
+    [],
+  );
+
+  const removeSupplier = useCallback(async (id: string) => {
+    await deleteSupplier(id);
+    setSuppliers((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const addMenuItem = useCallback(async (item: MenuItem) => {
+    const saved = await saveMenuItem(item);
+    setMenuItems((prev) => [...prev, saved]);
+  }, []);
+
+  const updateMenuItem = useCallback(async (id: string, item: MenuItem) => {
+    const saved = await saveMenuItem({ ...item, id });
+    setMenuItems((prev) => prev.map((m) => (m.id === id ? saved : m)));
+  }, []);
+
+  const removeMenuItem = useCallback(async (id: string) => {
+    await deleteMenuItemApi(id);
+    setMenuItems((prev) => prev.filter((m) => m.id !== id));
+  }, []);
+
   const value = useMemo(
-    () => ({ items, suppliers, addItem, updateItem, removeItem }),
-    [items, suppliers, addItem, updateItem, removeItem],
+    () => ({
+      items,
+      suppliers,
+      menuItems,
+      isLoading,
+      addItem,
+      updateItem,
+      removeItem,
+      addSupplier,
+      updateSupplier,
+      removeSupplier,
+      addMenuItem,
+      updateMenuItem,
+      removeMenuItem,
+    }),
+    [
+      items,
+      suppliers,
+      menuItems,
+      isLoading,
+      addItem,
+      updateItem,
+      removeItem,
+      addSupplier,
+      updateSupplier,
+      removeSupplier,
+      addMenuItem,
+      updateMenuItem,
+      removeMenuItem,
+    ],
   );
 
   return (
@@ -204,8 +176,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
 
 export function useInventory() {
   const ctx = useContext(InventoryContext);
-  if (!ctx) {
+  if (!ctx)
     throw new Error("useInventory must be used inside <InventoryProvider>");
-  }
   return ctx;
 }
