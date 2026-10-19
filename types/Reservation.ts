@@ -10,13 +10,10 @@ export type Reservation = {
   name: string;
   phone: string;
   party: number;
-  /** ISO date, YYYY-MM-DD (local) */
   date: string;
-  /** 24h time, HH:mm */
   time: string;
-  notes: string;
+  notes?: string;
   status: ReservationStatus;
-  /** Floor-plan table id, or null while unassigned */
   tableId: string | null;
 };
 

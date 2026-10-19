@@ -1,5 +1,11 @@
 "use client";
-import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import {
+  useRef,
+  useState,
+  useEffect,
+  type KeyboardEvent,
+  type PointerEvent,
+} from "react";
 import Link from "next/link";
 
 import { cn } from "@/lib/utils";
@@ -41,6 +47,7 @@ export default function FloorPlanView() {
     setStatus,
     removeTable,
     saveAllTables,
+    loadData,
   } = useFloor();
 
   const [zone, setZone] = useState<Zone>(zones[0]);
@@ -193,6 +200,10 @@ export default function FloorPlanView() {
       openEdit(t);
     }
   }
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   if (loading) {
     return (

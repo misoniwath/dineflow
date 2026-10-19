@@ -2,14 +2,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
-  User,
   FilterOption,
   UserRole,
   UserStatus,
   CreateUserBody,
   UpdateUserBody,
+  User,
 } from "@/types/User";
-import { createUser, deleteUser, getUsers, updateUser } from "@/lib/api/users";
+import {
+  useUsersStore,
+  STATUS_LABEL,
+  ROLE_LABEL,
+  statusBadge,
+  roleBadge,
+  AVATAR_COLORS,
+  getInitials,
+} from "@/stores/UserStore";
 
 import FilterPopoverComponent from "@/components/user/FilterPopoverComponent";
 import UserActionsComponent from "@/components/user/UserActionsComponent";
@@ -37,49 +45,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LayoutGrid, List, Plus, Search } from "lucide-react";
 
-const PAGE_SIZE = 10;
-
-const STATUS_LABEL: Record<UserStatus, string> = {
-  active: "Active",
-  disabled: "Disabled",
-};
-
-const ROLE_LABEL: Record<UserRole, string> = {
-  owner: "Owner",
-  manager: "Manager",
-  staff: "Staff",
-};
-
-const statusBadge: Record<UserStatus, string> = {
-  active: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-  disabled: "bg-slate-500/15 text-slate-700 dark:text-slate-400",
-};
-
-const roleBadge: Record<UserRole, string> = {
-  owner: "bg-violet-500/15 text-violet-700 dark:text-violet-400",
-  manager: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400",
-  staff: "bg-slate-500/15 text-slate-700 dark:text-slate-400",
-};
-
-const AVATAR_COLORS = [
-  "bg-violet-500",
-  "bg-cyan-500",
-  "bg-emerald-500",
-  "bg-amber-500",
-  "bg-rose-500",
-  "bg-sky-500",
-];
-
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
 export default function UserManagementView() {
+  const { users, loading, loadData, addUser, updateUserRecord, removeUser } =
+    useUsersStore();
+
   const [tab, setTab] = useState("users");
   const [view, setView] = useState<"list" | "card">("list");
   const [query, setQuery] = useState("");
@@ -92,9 +61,6 @@ export default function UserManagementView() {
   const [editing, setEditing] = useState<User | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState<User | null>(null);
-
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -106,29 +72,9 @@ export default function UserManagementView() {
     };
   }, [query, statusFilter, roleFilter]);
 
-  const loadUsers = async (params: any) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getUsers(params);
-      setUsers(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to fetch users");
-    } finally {
-      setLoading(false);
-    }
-  };
+  let searchDebounce: any = null;
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadUsers(params);
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  useEffect(() => {
-    loadUsers(params);
-  }, [statusFilter, roleFilter]);
+  const PAGE_SIZE = 10;
 
   const openAdd = () => {
     setEditing(null);
@@ -226,7 +172,7 @@ export default function UserManagementView() {
             ? { password: input.password.trim() }
             : {}),
         } as any;
-        await updateUser(editing.id, payload);
+        await updateUserRecord(editing.id, payload);
       } else {
         const payload: CreateUserBody = {
           name: input.name,
@@ -235,11 +181,11 @@ export default function UserManagementView() {
           isActive: input.status === "active",
           password: input.password?.trim(),
         } as any;
-        await createUser(payload);
+        await addUser(payload);
       }
 
       setFormOpen(false);
-      await loadUsers(query.trim() || undefined);
+      await loadData(params);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save user");
     } finally {
@@ -252,10 +198,10 @@ export default function UserManagementView() {
     try {
       setSaving(true);
       setError(null);
-      await deleteUser(deleting.id);
+      await removeUser(deleting.id);
       setDeleteOpen(false);
       setDeleting(null);
-      await loadUsers(query.trim() || undefined);
+      await loadData(params);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete user");
     } finally {
@@ -269,6 +215,28 @@ export default function UserManagementView() {
     setRoleFilter([]);
     setPage(1);
   };
+
+  useEffect(() => {
+    // Clear the previous timeout if user types again within 300ms
+    if (searchDebounce) {
+      clearTimeout(searchDebounce);
+    }
+
+    searchDebounce = setTimeout(() => {
+      loadData(params);
+    }, 300);
+
+    // Cleanup timeout on unmount or when query changes
+    return () => {
+      if (searchDebounce) {
+        clearTimeout(searchDebounce);
+      }
+    };
+  }, [query]);
+
+  useEffect(() => {
+    loadData(params);
+  }, [statusFilter, roleFilter]);
 
   return (
     <div className="space-y-4">
@@ -784,7 +752,6 @@ function UserFormComponent({
           >
             <option value="owner">Owner</option>
             <option value="manager">Manager</option>
-            <option value="cashier">Cashier</option>
             <option value="staff">Staff</option>
           </select>
         </div>
@@ -797,7 +764,6 @@ function UserFormComponent({
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <option value="active">Active</option>
-            <option value="invited">Invited</option>
             <option value="disabled">Disabled</option>
           </select>
         </div>
