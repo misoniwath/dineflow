@@ -5,6 +5,7 @@ import { InventoryProvider } from "@/stores/InventoryStore";
 import { FloorProvider } from "@/stores/FloorStore";
 import { ReservationProvider } from "@/stores/ReservationStore";
 import { OrderProvider } from "@/stores/OrderStore";
+import { UserProvider } from "@/stores/UserStore";
 
 type Provider = ComponentType<{ children: ReactNode }>;
 
@@ -29,4 +30,5 @@ export const AppProvider = composeProviders(
   ReservationProvider,
   AuthProvider,
   OrderProvider,
+  UserProvider,
 );

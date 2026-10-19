@@ -98,7 +98,7 @@ const ReservationContext = createContext<ReservationContextValue | null>(null);
 export function ReservationProvider({ children }: { children: ReactNode }) {
   const { tables, setStatus, updateTable } = useFloor();
   const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);

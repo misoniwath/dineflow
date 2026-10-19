@@ -1,30 +1,35 @@
 import { describe, test, expect, jest, beforeEach } from "@jest/globals";
 import {
-  getFloorTables,
-  addFloorTable,
-  updateFloorTable,
-  deleteFloorTable,
+  getFloorTablesApi,
+  addFloorTableApi,
+  updateFloorTableApi,
+  deleteFloorTableApi,
+  bulkUpdateFloorTablesApi,
 } from "@/lib/api/floors";
 
-// Mock the API module
+// Mock the API module with the correct API function names
 jest.mock("@/lib/api/floors", () => ({
-  getFloorTables: jest.fn(),
-  addFloorTable: jest.fn(),
-  updateFloorTable: jest.fn(),
-  deleteFloorTable: jest.fn(),
+  getFloorTablesApi: jest.fn(),
+  addFloorTableApi: jest.fn(),
+  updateFloorTableApi: jest.fn(),
+  deleteFloorTableApi: jest.fn(),
+  bulkUpdateFloorTablesApi: jest.fn(),
 }));
 
-const mockedGetTables = getFloorTables as jest.MockedFunction<
-  typeof getFloorTables
+const mockedGetTables = getFloorTablesApi as jest.MockedFunction<
+  typeof getFloorTablesApi
 >;
-const mockedAddTable = addFloorTable as jest.MockedFunction<
-  typeof addFloorTable
+const mockedAddTable = addFloorTableApi as jest.MockedFunction<
+  typeof addFloorTableApi
 >;
-const mockedUpdateTable = updateFloorTable as jest.MockedFunction<
-  typeof updateFloorTable
+const mockedUpdateTable = updateFloorTableApi as jest.MockedFunction<
+  typeof updateFloorTableApi
 >;
-const mockedDeleteTable = deleteFloorTable as jest.MockedFunction<
-  typeof deleteFloorTable
+const mockedDeleteTable = deleteFloorTableApi as jest.MockedFunction<
+  typeof deleteFloorTableApi
+>;
+const mockedBulkUpdate = bulkUpdateFloorTablesApi as jest.MockedFunction<
+  typeof bulkUpdateFloorTablesApi
 >;
 
 describe("FloorStore API & Action Logic", () => {
@@ -48,7 +53,7 @@ describe("FloorStore API & Action Logic", () => {
     ];
     mockedGetTables.mockResolvedValueOnce(mockTables as any);
 
-    const result = await getFloorTables();
+    const result = await getFloorTablesApi();
 
     expect(mockedGetTables).toHaveBeenCalledTimes(1);
     expect(result).toEqual(mockTables);
@@ -72,7 +77,7 @@ describe("FloorStore API & Action Logic", () => {
 
     mockedAddTable.mockResolvedValueOnce(savedTable as any);
 
-    const result = await addFloorTable(input);
+    const result = await addFloorTableApi(input);
 
     expect(mockedAddTable).toHaveBeenCalledWith(input);
     expect(result).toEqual(savedTable);
@@ -85,7 +90,7 @@ describe("FloorStore API & Action Logic", () => {
       ...tableUpdate,
     } as any);
 
-    const result = await updateFloorTable(tableUpdate as any);
+    const result = await updateFloorTableApi(tableUpdate as any);
 
     expect(mockedUpdateTable).toHaveBeenCalledWith(tableUpdate);
     expect(result.status).toBe("occupied");
@@ -94,9 +99,22 @@ describe("FloorStore API & Action Logic", () => {
   test("deletes a floor table successfully", async () => {
     mockedDeleteTable.mockResolvedValueOnce({ success: true } as any);
 
-    const result = await deleteFloorTable("t1");
+    const result = await deleteFloorTableApi("t1");
 
     expect(mockedDeleteTable).toHaveBeenCalledWith("t1");
+    expect(result.success).toBe(true);
+  });
+
+  test("bulk updates floor tables successfully", async () => {
+    const tablesList = [{ id: "t1", x: 50, y: 50 }];
+    mockedBulkUpdate.mockResolvedValueOnce({
+      success: true,
+      tables: tablesList,
+    } as any);
+
+    const result = await bulkUpdateFloorTablesApi(tablesList as any);
+
+    expect(mockedBulkUpdate).toHaveBeenCalledWith(tablesList);
     expect(result.success).toBe(true);
   });
 });

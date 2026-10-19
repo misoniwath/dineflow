@@ -11,7 +11,7 @@ jest.mock("@/lib/api/orders", () => ({
 }));
 
 jest.mock("@/lib/api/floors", () => ({
-  getFloorTables: jest.fn(),
+  getFloorTablesApi: jest.fn(),
 }));
 
 const mockedGetMenu = apiOrders.getMenuAndOrders as jest.MockedFunction<
@@ -20,8 +20,8 @@ const mockedGetMenu = apiOrders.getMenuAndOrders as jest.MockedFunction<
 const mockedCreateOrder = apiOrders.createOrder as jest.MockedFunction<
   typeof apiOrders.createOrder
 >;
-const mockedGetTables = apiFloors.getFloorTables as jest.MockedFunction<
-  typeof apiFloors.getFloorTables
+const mockedGetTables = apiFloors.getFloorTablesApi as jest.MockedFunction<
+  typeof apiFloors.getFloorTablesApi
 >;
 
 function POSComponent() {
@@ -79,17 +79,18 @@ describe("Order and Floor Integration", () => {
         id: "t1",
         number: 1,
         seats: 4,
+        shape: "square",
         zone: "Main Hall",
         status: "free",
         guests: 0,
         x: 0,
         y: 0,
       },
-    ]);
+    ] as any);
     mockedGetMenu.mockResolvedValueOnce({
       menu: [{ id: "item-1", name: "Burger", price: 10, category: "Mains" }],
       orders: [],
-    });
+    } as any);
     mockedCreateOrder.mockResolvedValueOnce({
       success: true,
       orderId: "ord-99",

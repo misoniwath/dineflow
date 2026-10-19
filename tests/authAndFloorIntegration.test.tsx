@@ -5,27 +5,28 @@ import { FloorProvider, useFloor } from "@/stores/FloorStore";
 import * as apiUsers from "@/lib/api/users";
 import * as apiFloors from "@/lib/api/floors";
 
-// Mock the underlying API modules
+// Mock the underlying API modules with correct API names
 jest.mock("@/lib/api/users", () => ({
   login: jest.fn(),
   logout: jest.fn(),
 }));
 
 jest.mock("@/lib/api/floors", () => ({
-  getFloorTables: jest.fn(),
-  addFloorTable: jest.fn(),
-  updateFloorTable: jest.fn(),
-  deleteFloorTable: jest.fn(),
+  getFloorTablesApi: jest.fn(),
+  addFloorTableApi: jest.fn(),
+  updateFloorTableApi: jest.fn(),
+  deleteFloorTableApi: jest.fn(),
+  bulkUpdateFloorTablesApi: jest.fn(),
 }));
 
 const mockedLogin = apiUsers.login as jest.MockedFunction<
   typeof apiUsers.login
 >;
-const mockedGetTables = apiFloors.getFloorTables as jest.MockedFunction<
-  typeof apiFloors.getFloorTables
+const mockedGetTables = apiFloors.getFloorTablesApi as jest.MockedFunction<
+  typeof apiFloors.getFloorTablesApi
 >;
-const mockedUpdateTable = apiFloors.updateFloorTable as jest.MockedFunction<
-  typeof apiFloors.updateFloorTable
+const mockedUpdateTable = apiFloors.updateFloorTableApi as jest.MockedFunction<
+  typeof apiFloors.updateFloorTableApi
 >;
 
 // Combined Component using both Auth and Floor contexts
@@ -70,8 +71,9 @@ describe("Auth and Floor Integration", () => {
     mockedGetTables.mockResolvedValueOnce([
       {
         id: "t1",
-        number: "10",
+        number: 10,
         seats: 4,
+        shape: "square",
         zone: "Main Hall",
         status: "free",
         guests: 0,
