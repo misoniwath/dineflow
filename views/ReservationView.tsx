@@ -9,12 +9,15 @@ import { Loader2 } from "lucide-react";
 /* Page                                                                */
 /* ------------------------------------------------------------------ */
 export default function ReservationsView() {
-  const { loading: isReservationLoading } = useReservations();
+  const { loadData, loading: isReservationLoading } = useReservations();
   const [today, setToday] = useState<string | null>(null);
 
   const loading = !today || isReservationLoading;
 
-  useEffect(() => setToday(todayISO()), []);
+  useEffect(() => {
+    setToday(todayISO());
+    loadData();
+  }, []);
 
   if (loading) {
     return (

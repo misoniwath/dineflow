@@ -53,47 +53,29 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { id, name, price, image, desc, category, ingredients } = body;
+    const { name, price, image, desc, category, ingredients } = body;
 
-    const itemId = id || `m-${Date.now()}`;
     const imageUrl = image && image.trim() !== "" ? image : null;
 
     const resultItem = await db.transaction(async (tx) => {
-      // 1. Insert or update the menu item
+      // 1. Insert the new menu item
       const [item] = await tx
         .insert(menuItems)
         .values({
-          id: itemId,
           name,
-          price: price,
+          price,
           image: imageUrl,
           desc: desc || null,
           category,
         })
-        .onConflictDoUpdate({
-          target: menuItems.id,
-          set: {
-            name,
-            price: price,
-            image: imageUrl,
-            desc: desc || null,
-            category,
-            updatedAt: sql`NOW()`,
-          },
-        })
         .returning();
 
-      // 2. Clear old recipe ingredient mappings for this menu item
-      await tx
-        .delete(menuInventoryItems)
-        .where(eq(menuInventoryItems.menuItemId, itemId));
-
-      // 3. Insert new recipe ingredients if provided
+      // 2. Insert recipe ingredients if provided
       if (Array.isArray(ingredients) && ingredients.length > 0) {
         await tx.insert(menuInventoryItems).values(
           ingredients.map(
             (ing: { inventoryItemId: string; quantityRequired: number }) => ({
-              menuItemId: itemId,
+              menuItemId: item.id,
               inventoryItemId: ing.inventoryItemId,
               quantityRequired: Number(ing.quantityRequired) || 0,
             }),
@@ -104,11 +86,11 @@ export async function POST(request: Request) {
       return item;
     });
 
-    // Fetch the fully populated menu item with its new ingredients to return to client
+    // Fetch the fully populated menu item with its ingredients
     const savedIngredients = await db
       .select()
       .from(menuInventoryItems)
-      .where(eq(menuInventoryItems.menuItemId, itemId));
+      .where(eq(menuInventoryItems.menuItemId, resultItem.id));
 
     return NextResponse.json({
       success: true,
@@ -119,7 +101,83 @@ export async function POST(request: Request) {
       {
         success: false,
         message:
-          error instanceof Error ? error.message : "Failed to save menu item",
+          error instanceof Error ? error.message : "Failed to create menu item",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
+    const body = await request.json();
+    const { id, name, price, image, desc, category, ingredients } = body;
+
+    const imageUrl = image && image.trim() !== "" ? image : null;
+
+    const resultItem = await db.transaction(async (tx) => {
+      // 1. Update the existing menu item
+      const [item] = await tx
+        .update(menuItems)
+        .set({
+          name,
+          price,
+          image: imageUrl,
+          desc: desc || null,
+          category,
+          updatedAt: sql`NOW()`,
+        })
+        .where(eq(menuItems.id, id))
+        .returning();
+
+      if (!item) {
+        throw new Error("Menu item not found");
+      }
+
+      // 2. Clear old recipe ingredient mappings
+      await tx
+        .delete(menuInventoryItems)
+        .where(eq(menuInventoryItems.menuItemId, id));
+
+      // 3. Insert new recipe ingredients if provided
+      if (Array.isArray(ingredients) && ingredients.length > 0) {
+        await tx.insert(menuInventoryItems).values(
+          ingredients.map(
+            (ing: { inventoryItemId: string; quantityRequired: number }) => ({
+              menuItemId: id,
+              inventoryItemId: ing.inventoryItemId,
+              quantityRequired: Number(ing.quantityRequired) || 0,
+            }),
+          ),
+        );
+      }
+
+      return item;
+    });
+
+    // Fetch the updated menu item ingredients
+    const savedIngredients = await db
+      .select()
+      .from(menuInventoryItems)
+      .where(eq(menuInventoryItems.menuItemId, id));
+
+    return NextResponse.json({
+      success: true,
+      item: { ...resultItem, ingredients: savedIngredients },
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        message:
+          error instanceof Error ? error.message : "Failed to update menu item",
       },
       { status: 500 },
     );

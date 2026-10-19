@@ -3,7 +3,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -46,22 +45,18 @@ type FloorContextValue = {
   ) => Promise<void>;
   setStatus: (id: string, status: TableStatus) => Promise<void>;
   removeTable: (id: string) => Promise<void>;
-  refreshTables: () => Promise<void>;
+  loadData: () => Promise<void>;
 };
 
 const FloorContext = createContext<FloorContextValue | null>(null);
 
 export function FloorProvider({ children }: { children: ReactNode }) {
   const [tables, setTables] = useState<FloorTable[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [zones, setZones] = useState<Zone[]>(["Main Hall"]);
 
-  const loadZones = (tables: FloorTable[]) => {
-    const uniqueZones = Array.from(new Set(tables.map((t) => t.zone)));
-    setZones(uniqueZones as Zone[]);
-  };
-
-  const refreshTables = useCallback(async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await getFloorTables();
       setTables(data);
@@ -73,9 +68,10 @@ export function FloorProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => {
-    refreshTables();
-  }, [refreshTables]);
+  const loadZones = (tables: FloorTable[]) => {
+    const uniqueZones = Array.from(new Set(tables.map((t) => t.zone)));
+    setZones(uniqueZones as Zone[]);
+  };
 
   const addTable = useCallback(
     async (input: TableInput) => {
@@ -106,11 +102,11 @@ export function FloorProvider({ children }: { children: ReactNode }) {
         return saved;
       } catch (error) {
         console.error("Failed to add table:", error);
-        refreshTables(); // Revert on failure
+        loadData();
         throw error;
       }
     },
-    [tables, refreshTables],
+    [tables, loadData],
   );
 
   // Local-only state change during dragging/editing
@@ -141,10 +137,10 @@ export function FloorProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error("Failed to update table:", error);
-        refreshTables();
+        loadData();
       }
     },
-    [tables, updateTableLocal, refreshTables],
+    [tables, updateTableLocal, loadData],
   );
 
   const saveAllTables = useCallback(async () => {
@@ -166,9 +162,9 @@ export function FloorProvider({ children }: { children: ReactNode }) {
       );
     } catch (error) {
       console.error("Failed to batch save tables:", error);
-      refreshTables(); // Revert on failure
+      loadData(); // Revert on failure
     }
-  }, [tables, refreshTables]);
+  }, [tables, loadData]);
 
   const setStatus = useCallback(
     async (id: string, status: TableStatus) => {
@@ -187,10 +183,10 @@ export function FloorProvider({ children }: { children: ReactNode }) {
         await updateFloorTable({ id, ...targetTable, status, guests });
       } catch (error) {
         console.error("Failed to update table status:", error);
-        refreshTables();
+        loadData();
       }
     },
-    [tables, refreshTables],
+    [tables, loadData],
   );
 
   const removeTable = useCallback(
@@ -202,10 +198,10 @@ export function FloorProvider({ children }: { children: ReactNode }) {
         await deleteFloorTable(id);
       } catch (error) {
         console.error("Failed to delete table:", error);
-        refreshTables();
+        loadData();
       }
     },
-    [refreshTables],
+    [loadData],
   );
 
   const value = useMemo(
@@ -219,7 +215,7 @@ export function FloorProvider({ children }: { children: ReactNode }) {
       updateTable,
       setStatus,
       removeTable,
-      refreshTables,
+      loadData,
     }),
     [
       tables,
@@ -231,7 +227,7 @@ export function FloorProvider({ children }: { children: ReactNode }) {
       updateTable,
       setStatus,
       removeTable,
-      refreshTables,
+      loadData,
     ],
   );
 

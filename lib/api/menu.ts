@@ -18,6 +18,17 @@ export async function saveMenuItemApi(item: MenuItem): Promise<MenuItem> {
   return data.item;
 }
 
+export async function updateMenuItemApi(item: MenuItem): Promise<MenuItem> {
+  const res = await fetch(`/api/menu-items`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(item),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message ?? "Failed to update menu item");
+  return data.item;
+}
+
 export async function deleteMenuItemApi(id: string): Promise<void> {
   const res = await fetch(`/api/menu-items?id=${id}`, { method: "DELETE" });
   const data = await res.json();

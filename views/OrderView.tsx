@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { cn, money } from "@/lib/utils";
 
@@ -38,10 +38,11 @@ export default function OrderView() {
     categories,
     tickets,
     setTickets,
+    loadData: loadOrder,
     sendOrderToKitchen,
     loading: isOrderLoading,
   } = useOrder();
-  const { tables, loading: isFloorLoading } = useFloor();
+  const { tables, loading: isFloorLoading, loadData: loadFloor } = useFloor();
 
   const [category, setCategory] = useState<string>("");
   const [table, setTable] = useState<number>(4);
@@ -86,6 +87,11 @@ export default function OrderView() {
       setIsSubmitting(false);
     }
   }
+
+  useEffect(() => {
+    loadOrder();
+    loadFloor();
+  }, []);
 
   if (loading) {
     return (

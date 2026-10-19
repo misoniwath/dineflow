@@ -20,9 +20,10 @@ type OrderContextValue = {
   itemsById: Record<string, MenuItem>;
   categories: string[];
   tickets: Tickets;
+  loading: boolean;
   setTickets: React.Dispatch<React.SetStateAction<Tickets>>;
   sendOrderToKitchen: (tableNumber: number) => Promise<void>;
-  loading: boolean;
+  loadData: () => Promise<void>;
 };
 
 const OrderContext = createContext<OrderContextValue | null>(null);
@@ -30,15 +31,18 @@ const OrderContext = createContext<OrderContextValue | null>(null);
 export function OrderProvider({ children }: { children: ReactNode }) {
   const [menuList, setMenuList] = useState<MenuItem[]>([]);
   const [tickets, setTickets] = useState<Tickets>({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    getMenuAndOrders()
-      .then((data) => {
-        setMenuList(data.menu);
-      })
-      .catch((err) => console.error("Failed to load menu", err))
-      .finally(() => setLoading(false));
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getMenuAndOrders();
+      setMenuList(data.menu);
+    } catch (err) {
+      console.error("Failed to load menu", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // Group flat menu items by category
@@ -87,11 +91,21 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       itemsById,
       categories,
       tickets,
+      loading,
       setTickets,
       sendOrderToKitchen,
-      loading,
+      loadData,
     }),
-    [menu, itemsById, categories, tickets, sendOrderToKitchen, loading],
+    [
+      menu,
+      itemsById,
+      categories,
+      tickets,
+      loading,
+      sendOrderToKitchen,
+      setTickets,
+      loadData,
+    ],
   );
 
   return (

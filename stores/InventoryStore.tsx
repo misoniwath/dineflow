@@ -19,6 +19,7 @@ import {
 import {
   getMenuItemsApi,
   saveMenuItemApi,
+  updateMenuItemApi,
   deleteMenuItemApi,
 } from "@/lib/api/menu";
 import {
@@ -64,6 +65,7 @@ type InventoryContextValue = {
   addMenuItem: (item: MenuItem) => Promise<void>;
   updateMenuItem: (id: string, item: MenuItem) => Promise<void>;
   removeMenuItem: (id: string) => Promise<void>;
+  loadData: () => Promise<void>;
 };
 
 const InventoryContext = createContext<InventoryContextValue | null>(null);
@@ -74,17 +76,22 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    Promise.all([getInventoryItemsApi(), getMenuItemsApi(), getSuppliersApi()])
-      .then(([invData, menuData, supplierData]) => {
-        setItems(invData);
-        setMenuItems(menuData);
-        setSuppliers(supplierData);
-      })
-      .catch((err) =>
-        console.error("Failed to load inventory, menu, or supplier data", err),
-      )
-      .finally(() => setLoading(false));
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [invData, menuData, supplierData] = await Promise.all([
+        getInventoryItemsApi(),
+        getMenuItemsApi(),
+        getSuppliersApi(),
+      ]);
+      setItems(invData);
+      setMenuItems(menuData);
+      setSuppliers(supplierData);
+    } catch (err) {
+      console.error("Failed to load inventory, menu, or supplier data", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const addItem = useCallback(async (input: ItemInput) => {
@@ -129,7 +136,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateMenuItem = useCallback(async (id: string, item: MenuItem) => {
-    const saved = await saveMenuItemApi({ ...item, id });
+    const saved = await updateMenuItemApi({ ...item, id });
     setMenuItems((prev) => prev.map((m) => (m.id === id ? saved : m)));
   }, []);
 
@@ -153,6 +160,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       addMenuItem,
       updateMenuItem,
       removeMenuItem,
+      loadData,
     }),
     [
       items,
@@ -168,6 +176,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       addMenuItem,
       updateMenuItem,
       removeMenuItem,
+      loadData,
     ],
   );
 
