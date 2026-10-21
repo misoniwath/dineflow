@@ -2,7 +2,7 @@ export type MenuItem = {
   id: string;
   name: string;
   price: number;
-  category: string;
+  category: "Starters" | "Mains" | "Desserts" | "Beverages";
   image?: string;
   desc?: string;
   ingredients?: MenuInventoryItem[];

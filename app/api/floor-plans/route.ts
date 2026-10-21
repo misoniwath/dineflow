@@ -77,7 +77,6 @@ export async function POST(request: Request) {
   }
 }
 
-// PUT /api/floor-plans - Update an existing floor table
 export async function PUT(request: Request) {
   try {
     if (!(await isAuthenticated())) {

@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 
 import { cn, money } from "@/lib/utils";
 import {
@@ -40,27 +40,13 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LayoutGrid, List, Plus, Search, Trash2, Loader2 } from "lucide-react";
-
-const PAGE_SIZE = 10;
-
-const statusBadge: Record<StockStatus, string> = {
-  "at-par": "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-  low: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  out: "bg-red-500/15 text-red-700 dark:text-red-400",
-};
-const statusBar: Record<StockStatus, string> = {
-  "at-par": "bg-emerald-500",
-  low: "bg-amber-500",
-  out: "bg-transparent",
-};
-const statusDot: Record<StockStatus, string> = {
-  "at-par": "bg-emerald-500",
-  low: "bg-amber-500",
-  out: "bg-red-500",
-};
-
-const qtyFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
-const qty = (n: number, unit: string) => `${qtyFmt.format(n)} ${unit}`;
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function InventoryView() {
   const {
@@ -77,6 +63,7 @@ export default function InventoryView() {
     addMenuItem,
     updateMenuItem,
     removeMenuItem,
+    loadData,
   } = useInventory();
 
   const supplierName = useMemo(
@@ -124,7 +111,31 @@ export default function InventoryView() {
   const [menuDeleteOpen, setMenuDeleteOpen] = useState(false);
   const [deletingMenu, setDeletingMenu] = useState<MenuItem | null>(null);
 
+  const availableCategories = ["Starters", "Mains", "Desserts", "Beverages"];
+  const PAGE_SIZE = 10;
+
+  const statusBadge: Record<StockStatus, string> = {
+    "at-par": "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+    low: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+    out: "bg-red-500/15 text-red-700 dark:text-red-400",
+  };
+
+  const statusBar: Record<StockStatus, string> = {
+    "at-par": "bg-emerald-500",
+    low: "bg-amber-500",
+    out: "bg-transparent",
+  };
+
+  const statusDot: Record<StockStatus, string> = {
+    "at-par": "bg-emerald-500",
+    low: "bg-amber-500",
+    out: "bg-red-500",
+  };
+
   const loading = isInventoryLoading;
+
+  const qtyFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+  const qty = (n: number, unit: string) => `${qtyFmt.format(n)} ${unit}`;
 
   const openAdd = () => {
     setEditing(null);
@@ -222,10 +233,10 @@ export default function InventoryView() {
   function handleSaveMenu(e: React.FormEvent) {
     e.preventDefault();
     const itemData: MenuItem = {
-      id: editingMenu ? editingMenu.id : `m-${Date.now()}`,
+      id: editingMenu ? editingMenu.id : "",
       name: menuName,
       price: Math.round(parseFloat(menuPrice || "0") * 100),
-      category: menuCategory,
+      category: menuCategory as MenuItem["category"],
       desc: menuDesc,
       ingredients: recipeIngredients,
     };
@@ -313,6 +324,10 @@ export default function InventoryView() {
     setSupplierFilter([]);
     setPage(1);
   }
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   if (loading) {
     return (
@@ -1096,12 +1111,23 @@ export default function InventoryView() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-medium">Category</label>
-                <Input
+                <Select
                   value={menuCategory}
-                  onChange={(e) => setMenuCategory(e.target.value)}
-                  placeholder="Starters, Mains, etc."
-                  required
-                />
+                  onValueChange={(value) =>
+                    setMenuCategory(value ?? "Starters")
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableCategories.map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium">Description</label>

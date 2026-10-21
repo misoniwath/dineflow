@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 
 import { navItems } from "@/lib/navItems";
@@ -38,10 +38,22 @@ export default function HomeView() {
   const [queueTab, setQueueTab] = useState<"preparing" | "ready">("preparing");
 
   // Consume store data
-  const { tables, loading: floorLoading } = useFloor();
-  const { reservations, loading: resLoading } = useReservations();
-  const { kitchenQueue, loading: orderLoading } = useOrder();
-  const { items: inventoryItems, loading: inventoryLoading } = useInventory();
+  const { tables, loading: floorLoading, loadData: loadFloor } = useFloor();
+  const {
+    reservations,
+    loading: resLoading,
+    loadData: loadReservation,
+  } = useReservations();
+  const {
+    kitchenQueue,
+    loading: orderLoading,
+    loadData: loadOrder,
+  } = useOrder();
+  const {
+    items: inventoryItems,
+    loading: inventoryLoading,
+    loadData: loadInventory,
+  } = useInventory();
 
   const loading =
     floorLoading || resLoading || orderLoading || inventoryLoading;
@@ -60,6 +72,13 @@ export default function HomeView() {
 
   // Low stock inventory placeholder (can be swapped with an inventory store if hooked up)
   const lowStock = inventoryItems.filter((item) => item.onHand <= item.lowAt);
+
+  useEffect(() => {
+    loadFloor();
+    loadReservation();
+    loadOrder();
+    loadInventory();
+  }, []);
 
   if (loading) {
     return (

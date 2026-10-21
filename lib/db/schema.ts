@@ -51,6 +51,14 @@ export const users = pgTable(
 /* ------------------------------------------------------------------ */
 /* Menu Items                                                          */
 /* ------------------------------------------------------------------ */
+export const menuCategoryEnum = pgEnum("menu_category", [
+  "Starters",
+  "Mains",
+  "Desserts",
+  "Beverages",
+  "Sides",
+]);
+
 export const menuItems = pgTable(
   "menu_items",
   {
@@ -59,7 +67,7 @@ export const menuItems = pgTable(
     price: integer("price").notNull(), // stored in cents or integer unit
     image: text("image"),
     desc: text("desc"),
-    category: text("category").notNull(), // e.g., "Starters", "Mains"
+    category: menuCategoryEnum().notNull().default("Starters"), // e.g., "Starters", "Mains"
     ...timestamps,
   },
   (t) => [index("menu_items_category_idx").on(t.category)],

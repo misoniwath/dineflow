@@ -2,7 +2,6 @@
 import {
   createContext,
   useContext,
-  useEffect,
   useState,
   useCallback,
   type ReactNode,
@@ -17,7 +16,6 @@ import {
   getReservationsApi,
   addReservationApi,
   updateReservationApi,
-  deleteReservationApi,
 } from "@/lib/api/reservations";
 
 /* ------------------------------------------------------------------ */
@@ -92,7 +90,7 @@ type ReservationContextValue = {
     time: string,
     excludeId?: string,
   ) => Reservation | undefined;
-  refreshReservations: () => Promise<void>;
+  loadData: () => Promise<void>;
 };
 
 const ReservationContext = createContext<ReservationContextValue | null>(null);
@@ -100,9 +98,10 @@ const ReservationContext = createContext<ReservationContextValue | null>(null);
 export function ReservationProvider({ children }: { children: ReactNode }) {
   const { tables, setStatus, updateTable } = useFloor();
   const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  const refreshReservations = useCallback(async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await getReservationsApi();
       setReservations(data);
@@ -112,10 +111,6 @@ export function ReservationProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    refreshReservations();
-  }, [refreshReservations]);
 
   const conflictIn = (
     list: Reservation[],
@@ -159,7 +154,7 @@ export function ReservationProvider({ children }: { children: ReactNode }) {
       return saved;
     } catch (error) {
       console.error("Failed to add reservation:", error);
-      refreshReservations();
+      loadData();
       throw error;
     }
   };
@@ -193,7 +188,7 @@ export function ReservationProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("Failed to update reservation:", error);
-      refreshReservations();
+      loadData();
     }
   };
 
@@ -221,7 +216,7 @@ export function ReservationProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("Failed to assign table:", error);
-      refreshReservations();
+      loadData();
     }
   };
 
@@ -239,7 +234,7 @@ export function ReservationProvider({ children }: { children: ReactNode }) {
       updateTable(current.tableId, { guests: current.party });
     } catch (error) {
       console.error("Failed to seat reservation:", error);
-      refreshReservations();
+      loadData();
     }
   };
 
@@ -256,7 +251,7 @@ export function ReservationProvider({ children }: { children: ReactNode }) {
       if (current.tableId) setStatus(current.tableId, "cleaning");
     } catch (error) {
       console.error("Failed to complete reservation:", error);
-      refreshReservations();
+      loadData();
     }
   };
 
@@ -276,7 +271,7 @@ export function ReservationProvider({ children }: { children: ReactNode }) {
       if (current.tableId) releaseIfUnheld(current.tableId, reservations);
     } catch (error) {
       console.error("Failed to cancel reservation:", error);
-      refreshReservations();
+      loadData();
     }
   };
 
@@ -291,7 +286,7 @@ export function ReservationProvider({ children }: { children: ReactNode }) {
     cancelReservation,
     tableConflict: (tableId, date, time, excludeId) =>
       conflictIn(reservations, tableId, date, time, excludeId),
-    refreshReservations,
+    loadData,
   };
 
   return (

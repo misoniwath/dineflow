@@ -11,7 +11,6 @@ function mapFloorTable(table: FloorTable): FloorTable {
   return {
     ...table,
     zone: formatSnakeCase(table.zone.trim()) as Zone,
-    shape: table.shape.trim() as FloorTable["shape"],
   };
 }
 
@@ -27,7 +26,7 @@ function toSnakeCase(str: string | null | undefined): string {
     .replace(/^_+|_+$/g, "");
 }
 
-export async function getFloorTables(): Promise<FloorTable[]> {
+export async function getFloorTablesApi(): Promise<FloorTable[]> {
   const res = await fetch("/api/floor-plans", {
     method: "GET",
     headers: { "Content-Type": "application/json" },
@@ -41,7 +40,7 @@ export async function getFloorTables(): Promise<FloorTable[]> {
   return data.tables.map(mapFloorTable);
 }
 
-export async function addFloorTable(
+export async function addFloorTableApi(
   input: TableInput & {
     status?: TableStatus;
     guests?: number;
@@ -64,7 +63,7 @@ export async function addFloorTable(
   return mapFloorTable(data.table);
 }
 
-export async function updateFloorTable(
+export async function updateFloorTableApi(
   input: Partial<TableInput> & {
     id?: string;
     status?: TableStatus;
@@ -91,7 +90,36 @@ export async function updateFloorTable(
   return mapFloorTable(data.table);
 }
 
-export async function deleteFloorTable(id: string): Promise<void> {
+export async function bulkUpdateFloorTablesApi(
+  tables: (Partial<TableInput> & {
+    id: string;
+    status?: TableStatus;
+    guests?: number;
+    x?: number;
+    y?: number;
+  })[],
+): Promise<FloorTable[]> {
+  const res = await fetch("/api/floor-plans/bulk-update", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      tables: tables.map((t) => ({
+        ...t,
+        zone: t.zone ? toSnakeCase(t.zone) : undefined,
+      })),
+    }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to bulk update floor tables");
+  }
+
+  const data = await res.json();
+  return data.tables.map(mapFloorTable);
+}
+
+export async function deleteFloorTableApi(id: string): Promise<void> {
   const res = await fetch(`/api/floor-plans?id=${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
