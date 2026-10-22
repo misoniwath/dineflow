@@ -13,7 +13,7 @@ import { useReservations, todayISO } from "@/stores/ReservationStore";
 import { useOrder } from "@/stores/OrderStore";
 import { useInventory } from "@/stores/InventoryStore";
 
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,9 +33,17 @@ const statusStyles: Record<TableStatus, string> = {
   cleaning: "border border-amber-500/60 bg-amber-500/15 text-foreground",
 };
 
+const queueTabs = [
+  { status: "pending", label: "Placed", empty: "No placed orders." },
+  { status: "preparing", label: "Preparing", empty: "No orders being prepared." },
+  { status: "ready", label: "Ready", empty: "No orders waiting to be served." },
+] as const;
+type QueueTab = (typeof queueTabs)[number]["status"];
+
 export default function HomeView() {
   const { greeting, date } = useGreeting();
-  const [queueTab, setQueueTab] = useState<"preparing" | "ready">("preparing");
+  const [queueTab, setQueueTab] = useState<QueueTab>("pending");
+  const [now, setNow] = useState<number | null>(null);
 
   // Consume store data
   const { tables, loading: floorLoading, loadData: loadFloor } = useFloor();
@@ -45,7 +53,8 @@ export default function HomeView() {
     loadData: loadReservation,
   } = useReservations();
   const {
-    kitchenQueue,
+    kitchenTickets,
+    error: orderError,
     loading: orderLoading,
     loadData: loadOrder,
   } = useOrder();
@@ -57,6 +66,12 @@ export default function HomeView() {
 
   const loading =
     floorLoading || resLoading || orderLoading || inventoryLoading;
+
+  const kitchenQueue = {
+    pending: kitchenTickets.filter((ticket) => ticket.status === "pending"),
+    preparing: kitchenTickets.filter((ticket) => ticket.status === "preparing"),
+    ready: kitchenTickets.filter((ticket) => ticket.status === "ready"),
+  };
 
   const tableList = tables.map((t) => ({
     n: t.number,
@@ -74,10 +89,20 @@ export default function HomeView() {
   const lowStock = inventoryItems.filter((item) => item.onHand <= item.lowAt);
 
   useEffect(() => {
-    loadFloor();
-    loadReservation();
-    loadOrder();
-    loadInventory();
+    void loadFloor();
+    void loadReservation();
+    void loadOrder();
+    void loadInventory();
+  }, [loadFloor, loadReservation, loadOrder, loadInventory]);
+
+  useEffect(() => {
+    const updateClock = () => setNow(Date.now());
+    const initialTick = window.setTimeout(updateClock, 0);
+    const interval = window.setInterval(updateClock, 60_000);
+    return () => {
+      window.clearTimeout(initialTick);
+      window.clearInterval(interval);
+    };
   }, []);
 
   if (loading) {
@@ -114,11 +139,12 @@ export default function HomeView() {
         />
         <HomeStatCardComponent
           label="Open orders"
-          value={String(
-            (kitchenQueue?.preparing?.length || 0) +
-              (kitchenQueue?.ready?.length || 0),
-          )}
-          note={`${kitchenQueue?.ready?.length || 0} ready to serve`}
+          value={orderError ? "—" : String(kitchenTickets.length)}
+          note={
+            orderError
+              ? "Kitchen orders unavailable"
+              : `${kitchenQueue.ready.length} ready to serve`
+          }
         />
         <HomeStatCardComponent
           label="Tables in use"
@@ -144,11 +170,14 @@ export default function HomeView() {
                   Tap a table to open its order.
                 </CardDescription>
               </div>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/floor-plan" className="flex items-center">
-                  <span>Floor plan</span>
-                  <ArrowRight className="ml-1.5 size-4" />
-                </Link>
+              <Button
+                variant="ghost"
+                size="sm"
+                nativeButton={false}
+                render={<Link href="/floor-plan" className="flex items-center" />}
+              >
+                <span>Floor plan</span>
+                <ArrowRight className="ml-1.5 size-4" />
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -158,14 +187,15 @@ export default function HomeView() {
                     key={n}
                     variant="ghost"
                     className={cn("h-14 tabular-nums", statusStyles[s])}
-                    asChild
+                    nativeButton={false}
+                    render={
+                      <Link
+                        href={`/order?table=${n}`}
+                        aria-label={`Table ${n}, ${s}`}
+                      />
+                    }
                   >
-                    <Link
-                      href={`/order?table=${n}`}
-                      aria-label={`Table ${n}, ${s}`}
-                    >
-                      {n}
-                    </Link>
+                    {n}
                   </Button>
                 ))}
               </div>
@@ -185,82 +215,105 @@ export default function HomeView() {
           </Card>
 
           {/* Kitchen queue */}
-          <Card>
+          <Card role="region" aria-labelledby="home-kitchen-queue-heading">
             <CardHeader className="flex flex-row items-start justify-between gap-3">
               <div className="space-y-1">
-                <CardTitle className="text-base">Kitchen queue</CardTitle>
+                <CardTitle id="home-kitchen-queue-heading" className="text-base">
+                  Kitchen queue
+                </CardTitle>
                 <CardDescription>
-                  Live tickets from the kitchen.
+                  Current placed, preparing, and ready orders.
                 </CardDescription>
               </div>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/kitchen" className="flex items-center">
-                  <span>Open display </span>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void loadOrder()}
+                >
+                  <RefreshCw aria-hidden="true" className="size-4" />
+                  Refresh queue
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  nativeButton={false}
+                  render={<Link href="/kitchen" className="flex items-center" />}
+                >
+                  <span>Open display</span>
                   <ArrowRight className="ml-1.5 size-4" />
-                </Link>
-              </Button>
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <Tabs
-                value={queueTab}
-                onValueChange={(v) => setQueueTab(v as "preparing" | "ready")}
-              >
-                <TabsList>
-                  <TabsTrigger value="preparing" className="gap-2 px-3">
-                    Preparing
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {kitchenQueue?.preparing?.length || 0}
-                    </span>
-                  </TabsTrigger>
-                  <TabsTrigger value="ready" className="gap-2 px-3">
-                    Ready
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {kitchenQueue?.ready?.length || 0}
-                    </span>
-                  </TabsTrigger>
-                </TabsList>
+              {orderError ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {orderError}
+                </p>
+              ) : (
+                <Tabs
+                  value={queueTab}
+                  onValueChange={(value) => {
+                    if (
+                      value === "pending" || value === "preparing" || value === "ready"
+                    ) setQueueTab(value);
+                  }}
+                >
+                  <TabsList>
+                    {queueTabs.map(({ status, label }) => (
+                      <TabsTrigger key={status} value={status} className="gap-2 px-3">
+                        {label}
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {kitchenQueue[status].length}
+                        </span>
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
 
-                {(["preparing", "ready"] as const).map((key) => {
-                  const items = kitchenQueue?.[key] || [];
-                  return (
-                    <TabsContent key={key} value={key} className="mt-4">
-                      {items.length === 0 ? (
-                        <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                          Nothing{" "}
-                          {key === "ready"
-                            ? "waiting to be served"
-                            : "in the kitchen"}{" "}
-                          right now.
-                        </p>
-                      ) : (
-                        <ul className="divide-y rounded-lg border">
-                          {items.map((t: any) => (
-                            <li
-                              key={t.id}
-                              className="flex items-center gap-3 p-3 text-sm"
-                            >
-                              <Badge
-                                variant="secondary"
-                                className="rounded-full"
+                  {queueTabs.map(({ status, empty }) => {
+                    const tickets = kitchenQueue[status];
+                    return (
+                      <TabsContent key={status} value={status} className="mt-4">
+                        {tickets.length === 0 ? (
+                          <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                            {empty}
+                          </p>
+                        ) : (
+                          <ul className="divide-y rounded-lg border">
+                            {tickets.map((ticket) => (
+                              <li
+                                key={ticket.id}
+                                className="flex items-center gap-3 p-3 text-sm"
                               >
-                                Table {t.table}
-                              </Badge>
-                              <span className="min-w-0 flex-1 truncate">
-                                {t.summary}
-                              </span>
-                              {key === "preparing" && (
-                                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                                  {t.minutes} min
+                                <Badge
+                                  variant="secondary"
+                                  className="rounded-full"
+                                >
+                                  Table {ticket.tableNumber}
+                                </Badge>
+                                <span className="min-w-0 flex-1 truncate">
+                                  {ticket.items
+                                    .map((item) => `${item.quantity}× ${item.name}`)
+                                    .join(", ")}
                                 </span>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </TabsContent>
-                  );
-                })}
-              </Tabs>
+                                {status !== "ready" && (
+                                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                                    {now === null ? "—" : Math.max(
+                                      0,
+                                      Math.floor((now - Date.parse(ticket.createdAt)) / 60_000),
+                                    )} min
+                                  </span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </TabsContent>
+                    );
+                  })}
+                </Tabs>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -274,8 +327,13 @@ export default function HomeView() {
                   Tonight&apos;s reservations
                 </CardTitle>
               </div>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/reservations">View all</Link>
+              <Button
+                variant="ghost"
+                size="sm"
+                nativeButton={false}
+                render={<Link href="/reservations" />}
+              >
+                View all
               </Button>
             </CardHeader>
             <CardContent>
