@@ -70,9 +70,9 @@ export const navItems: NavItem[] = [
   {
     title: "Scheduling",
     href: "/scheduling",
-    desc: "Organize staff shifts, manage work schedules, and track staffing needs.",
+    desc: "View your shifts, record attendance, and manage staff schedules.",
     icon: User,
-    roles: ["manager", "owner"],
+    roles: ["staff", "manager", "owner"],
   },
   {
     title: "Analytics",

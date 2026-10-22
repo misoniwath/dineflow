@@ -9,7 +9,7 @@ const ROUTE_ROLES: { prefix: string; allowedRoles: Role[] }[] = [
   { prefix: "/user-management", allowedRoles: ["owner"] },
   { prefix: "/analytics", allowedRoles: ["manager", "owner"] },
   { prefix: "/inventory", allowedRoles: ["manager", "owner"] },
-  { prefix: "/scheduling", allowedRoles: ["manager", "owner"] },
+  { prefix: "/scheduling", allowedRoles: ["staff", "manager", "owner"] },
   // Add other guarded routes here as needed
 ];
 

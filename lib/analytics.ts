@@ -5,15 +5,17 @@ import type {
   AnalyticsDateSelection,
   AnalyticsPeriod,
   AnalyticsPresetRange,
+  AnalyticsReceipt,
   AnalyticsSummary,
   MenuItemPerformance,
 } from "@/types/Analytics";
+import { getRestaurantDate } from "@/lib/scheduling";
 
 const dayMs = 24 * 60 * 60 * 1000;
 const timezone = "Asia/Phnom_Penh";
 
 function isValidDate(date: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date.startsWith("0000")) return false;
   const timestamp = Date.parse(`${date}T00:00:00Z`);
   return (
     Number.isFinite(timestamp) &&
@@ -37,6 +39,9 @@ export function getAnalyticsDateError(
   if (selection.startDate > selection.endDate) {
     return "End date must be on or after start date.";
   }
+  const days =
+    (Date.parse(selection.endDate) - Date.parse(selection.startDate)) / dayMs + 1;
+  if (days > 366) return "Choose a date range of 366 days or fewer.";
   if (
     bounds &&
     (selection.startDate < bounds.startDate || selection.endDate > bounds.endDate)
@@ -44,6 +49,43 @@ export function getAnalyticsDateError(
     return `Choose dates between ${bounds.startDate} and ${bounds.endDate}.`;
   }
   return null;
+}
+
+export function resolveAnalyticsRequest(
+  params: URLSearchParams,
+  referenceDate: string,
+): {
+  range: AnalyticsDateRange;
+  selection: AnalyticsDateSelection;
+  comparison: AnalyticsDateSelection;
+} {
+  const range = params.get("range") ?? "Today";
+  if (
+    range !== "Today" && range !== "This week" &&
+    range !== "This month" && range !== "Custom"
+  ) {
+    throw new RangeError("Choose a valid analytics date range.");
+  }
+  const { selection, comparison } =
+    range === "Custom"
+      ? {
+          selection: {
+            startDate: params.get("startDate") ?? "",
+            endDate: params.get("endDate") ?? "",
+          },
+          comparison: null,
+        }
+      : getPresetAnalyticsDates(range, referenceDate);
+  const error = getAnalyticsDateError(selection);
+  if (error) throw new RangeError(error);
+  if (selection.endDate > referenceDate) {
+    throw new RangeError("Choose dates on or before today.");
+  }
+  return {
+    range,
+    selection,
+    comparison: comparison ?? getPreviousAnalyticsDates(selection),
+  };
 }
 
 export function getPreviousAnalyticsDates(selection: AnalyticsDateSelection) {
@@ -141,7 +183,41 @@ function getDates(selection: AnalyticsDateSelection) {
 }
 
 function getDaySales(day: AnalyticsDailyRecord) {
-  return day.menuItems.reduce((sum, item) => sum + item.sales, 0);
+  return day.netSales ?? day.menuItems.reduce((sum, item) => sum + item.sales, 0);
+}
+
+function getWeeklySales(days: AnalyticsDailyRecord[]) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+  });
+  const weeks = new Map<
+    string,
+    { startDate: string; endDate: string; sales: number }
+  >();
+  for (const day of days) {
+    const weekday = new Date(`${day.date}T00:00:00Z`).getUTCDay();
+    const weekStart = addAnalyticsDays(day.date, -((weekday + 6) % 7));
+    const week = weeks.get(weekStart) ?? {
+      startDate: day.date,
+      endDate: day.date,
+      sales: 0,
+    };
+    week.endDate = day.date;
+    week.sales += getDaySales(day);
+    weeks.set(weekStart, week);
+  }
+  return [...weeks.values()].map((week) => {
+    const start = formatter.format(new Date(`${week.startDate}T00:00:00Z`));
+    const end = new Date(`${week.endDate}T00:00:00Z`);
+    return {
+      label: week.startDate === week.endDate
+        ? start
+        : `${start}–${end.getUTCDate()}`,
+      sales: week.sales,
+    };
+  });
 }
 
 function summarize(days: AnalyticsDailyRecord[]): AnalyticsSummary {
@@ -160,6 +236,7 @@ export function createAnalyticsReport(
   range: AnalyticsDateRange,
   selection: AnalyticsDateSelection,
   comparison = getPreviousAnalyticsDates(selection),
+  source: AnalyticsData["source"] = "demo",
 ): AnalyticsData {
   const error = getAnalyticsDateError(selection);
   if (error) throw new RangeError(error);
@@ -194,6 +271,7 @@ export function createAnalyticsReport(
   });
 
   return {
+    source,
     range,
     period: toPeriod(selection),
     comparisonPeriod: hasComparison ? toPeriod(comparison) : null,
@@ -202,15 +280,69 @@ export function createAnalyticsReport(
       ? summarize(comparisonDates.map((date) => byDate.get(date)!))
       : null,
     salesData:
-      days.length === 1 && days[0].hourlySales.length > 0
-        ? days[0].hourlySales.map((point) => ({ ...point }))
-        : days.map((day) => ({
-            label: dayFormatter.format(new Date(`${day.date}T00:00:00Z`)),
-            sales: getDaySales(day),
-          })),
+      range === "This month"
+        ? getWeeklySales(days)
+        : days.length === 1 && days[0].hourlySales.length > 0
+          ? days[0].hourlySales.map((point) => ({ ...point }))
+          : days.map((day) => ({
+              label: dayFormatter.format(new Date(`${day.date}T00:00:00Z`)),
+              sales: getDaySales(day),
+            })),
     menuPerformance: {
       bestPerforming: ranked.slice(0, 3),
       needAttention: ranked.slice(3).slice(-3).reverse(),
     },
   };
+}
+
+export function createPaidAnalyticsReport(
+  receipts: AnalyticsReceipt[],
+  range: AnalyticsDateRange,
+  selection: AnalyticsDateSelection,
+  comparison: AnalyticsDateSelection,
+): AnalyticsData {
+  const error =
+    getAnalyticsDateError(selection) ?? getAnalyticsDateError(comparison);
+  if (error) throw new RangeError(error);
+  const records = new Map<string, AnalyticsDailyRecord>();
+  for (const date of [...getDates(selection), ...getDates(comparison)]) {
+    records.set(date, {
+      date,
+      netSales: 0,
+      totalOrders: 0,
+      covers: 0,
+      menuItems: [],
+      hourlySales: Array.from({ length: 24 }, (_, hour) => ({
+        label: `${hour % 12 || 12} ${hour < 12 ? "AM" : "PM"}`,
+        sales: 0,
+      })),
+    });
+  }
+  const hourFormatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    hourCycle: "h23",
+  });
+  for (const receipt of receipts) {
+    const date = getRestaurantDate(receipt.paidAt);
+    const day = records.get(date);
+    if (!day) continue;
+    day.netSales = (day.netSales ?? 0) + receipt.totalCents;
+    day.totalOrders += receipt.orderCount;
+    day.covers += receipt.guestCount;
+    const hour = Number(hourFormatter.format(new Date(receipt.paidAt)));
+    day.hourlySales[hour].sales += receipt.totalCents;
+    for (const item of receipt.items) {
+      let performance = day.menuItems.find((entry) => entry.name === item.name);
+      if (!performance) {
+        performance = { name: item.name, quantitySold: 0, sales: 0 };
+        day.menuItems.push(performance);
+      }
+      performance.quantitySold += item.quantity;
+      performance.sales += item.quantity * item.unitPriceCents;
+    }
+  }
+  return createAnalyticsReport(
+    [...records.values()], range, selection, comparison, "payments",
+  );
 }

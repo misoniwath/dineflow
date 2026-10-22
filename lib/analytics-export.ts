@@ -45,7 +45,7 @@ export function createAnalyticsCsv(
     period.startAt,
     period.endAt,
     period.timezone,
-    "Demo data",
+    data.source === "payments" ? "Recorded payments" : "Demo data",
     comparisonPeriod ? "Yes" : "No",
     comparisonPeriod?.startAt ?? "",
     comparisonPeriod?.endAt ?? "",

@@ -1,27 +1,25 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Menu } from "@base-ui/react/menu";
-import { ChevronDown, Download } from "lucide-react";
+import { ChevronDown, Download, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import SalesChartComponent from "@/components/analytics/SalesChartComponent";
 import HomeStatCardComponent from "@/components/HomeStatCardComponent";
 import MenuPerformanceCardComponent from "@/components/analytics/MenuPerformanceCardComponent";
-import {
-  getSampleAnalyticsData,
-  sampleAnalyticsCoverage,
-  sampleAnalyticsData,
-} from "@/lib/analytics-samples";
+import { getAnalyticsApi } from "@/lib/api/analytics";
+import { getRestaurantDate } from "@/lib/scheduling";
 import {
   formatAnalyticsPeriod,
   getAnalyticsDateError,
-  getAnalyticsPeriodDates,
+  getPresetAnalyticsDates,
 } from "@/lib/analytics";
 import { createAnalyticsCsv } from "@/lib/analytics-export";
 import type {
   AnalyticsDateRange,
+  AnalyticsData,
   AnalyticsDateSelection,
   AnalyticsExportSection,
 } from "@/types/Analytics";
@@ -38,11 +36,12 @@ const exportOptions: { value: AnalyticsExportSection; label: string }[] = [
   { value: "sales-breakdown", label: "Sales breakdown" },
   { value: "menu-performance", label: "Menu performance" },
 ];
-const initialCustomDates = getAnalyticsPeriodDates(
-  sampleAnalyticsData["This week"].period,
-);
 
-export default function AnalyticsView() {
+export default function AnalyticsView({ initialNow }: { initialNow: string }) {
+  const [today, setToday] = useState(() => getRestaurantDate(initialNow));
+  const [initialCustomDates] = useState(
+    () => getPresetAnalyticsDates("This week", today).selection,
+  );
   const [selectedRange, setSelectedRange] =
     useState<AnalyticsDateRange>("Today");
   const [customDates, setCustomDates] =
@@ -50,13 +49,52 @@ export default function AnalyticsView() {
   const [draftDates, setDraftDates] =
     useState<AnalyticsDateSelection>(initialCustomDates);
   const [dateError, setDateError] = useState<string | null>(null);
-  const analyticsData =
-    selectedRange === "Custom"
-      ? getSampleAnalyticsData("Custom", customDates)
-      : sampleAnalyticsData[selectedRange];
-  const { summary, previousSummary, salesData, menuPerformance } =
-    analyticsData;
-  const periodLabel = formatAnalyticsPeriod(analyticsData.period);
+  const [refreshCount, setRefreshCount] = useState(0);
+  const [result, setResult] = useState<{
+    key: string;
+    data: AnalyticsData | null;
+    error: string | null;
+  }>({ key: "", data: null, error: null });
+  const requestKey = `${selectedRange}:${customDates.startDate}:${customDates.endDate}:${today}:${refreshCount}`;
+  const loading = result.key !== requestKey;
+  const analyticsData = loading ? null : result.data;
+  const loadError = loading ? null : result.error;
+  const periodLabel = analyticsData
+    ? formatAnalyticsPeriod(analyticsData.period)
+    : "";
+
+  useEffect(() => {
+    const updateDate = () => setToday(getRestaurantDate(new Date().toISOString()));
+    const initialTick = window.setTimeout(updateDate, 0);
+    const interval = window.setInterval(updateDate, 30_000);
+    return () => {
+      window.clearTimeout(initialTick);
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+    void getAnalyticsApi(selectedRange, customDates, controller.signal).then(
+      (data) => {
+        if (!cancelled) setResult({ key: requestKey, data, error: null });
+      },
+      (cause: unknown) => {
+        if (!cancelled) {
+          setResult({
+            key: requestKey,
+            data: null,
+            error: cause instanceof Error ? cause.message : "Could not load Analytics.",
+          });
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [selectedRange, customDates, requestKey]);
   const hasPendingDates =
     selectedRange === "Custom" &&
     (draftDates.startDate !== customDates.startDate ||
@@ -64,12 +102,15 @@ export default function AnalyticsView() {
 
   function handleApplyDates(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const error = getAnalyticsDateError(draftDates, sampleAnalyticsCoverage);
+    const error =
+      getAnalyticsDateError(draftDates) ??
+      (draftDates.endDate > today ? "Choose dates on or before today." : null);
     setDateError(error);
     if (!error) setCustomDates({ ...draftDates });
   }
 
   function handleExportCsv(section: AnalyticsExportSection) {
+    if (!analyticsData || hasPendingDates || dateError) return;
     const { content, filename } = createAnalyticsCsv(analyticsData, section);
     const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -84,18 +125,26 @@ export default function AnalyticsView() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  const comparisonLabel = {
-    Today: "yesterday",
-    "This week": "last week",
-    "This month": "last month",
-    Custom: analyticsData.comparisonPeriod
-      ? `for ${formatAnalyticsPeriod(analyticsData.comparisonPeriod)}`
-      : "in the previous period",
-  }[selectedRange];
+  const comparisonLabel = analyticsData?.comparisonPeriod
+    ? `for ${formatAnalyticsPeriod(analyticsData.comparisonPeriod)}`
+    : "in the previous period";
   const noComparisonNote = "Previous-period comparison unavailable.";
 
   return (
-    <div className="space-y-6">
+    <section
+      className="space-y-6"
+      aria-labelledby="analytics-heading"
+      aria-busy={loading}
+    >
+      <header className="space-y-1">
+        <h1 id="analytics-heading" className="text-2xl font-semibold">
+          Analytics
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Sales from recorded payments, dated in Asia/Phnom_Penh (UTC+07:00).
+          Average ticket uses paid orders; covers use the guest count saved on each receipt.
+        </p>
+      </header>
       <div className="flex flex-wrap justify-end gap-2">
         {rangeOptions.map((range) => (
           <Button
@@ -112,9 +161,17 @@ export default function AnalyticsView() {
             {range}
           </Button>
         ))}
+        <Button
+          type="button"
+          variant="outline"
+          disabled={loading}
+          onClick={() => setRefreshCount((count) => count + 1)}
+        >
+          <RefreshCw aria-hidden="true" /> Refresh
+        </Button>
         <Menu.Root>
           <Menu.Trigger
-            disabled={hasPendingDates}
+            disabled={!analyticsData || loading || hasPendingDates || Boolean(dateError)}
             render={<Button type="button" variant="outline" />}
           >
             <Download aria-hidden="true" />
@@ -156,12 +213,11 @@ export default function AnalyticsView() {
                 id="analytics-start-date"
                 type="date"
                 required
-                min={sampleAnalyticsCoverage.startDate}
-                max={sampleAnalyticsCoverage.endDate}
+                max={today}
                 value={draftDates.startDate}
                 aria-invalid={Boolean(dateError)}
                 aria-describedby={
-                  dateError ? "analytics-date-error" : "analytics-demo-period"
+                  dateError ? "analytics-date-error" : "analytics-date-help"
                 }
                 onChange={(event) => {
                   setDraftDates((current) => ({
@@ -178,12 +234,11 @@ export default function AnalyticsView() {
                 id="analytics-end-date"
                 type="date"
                 required
-                min={sampleAnalyticsCoverage.startDate}
-                max={sampleAnalyticsCoverage.endDate}
+                max={today}
                 value={draftDates.endDate}
                 aria-invalid={Boolean(dateError)}
                 aria-describedby={
-                  dateError ? "analytics-date-error" : "analytics-demo-period"
+                  dateError ? "analytics-date-error" : "analytics-date-help"
                 }
                 onChange={(event) => {
                   setDraftDates((current) => ({
@@ -196,10 +251,9 @@ export default function AnalyticsView() {
             </div>
             <Button type="submit">Apply dates</Button>
           </div>
-          <p id="analytics-demo-period" className="text-xs text-muted-foreground">
-            Demo dates: {sampleAnalyticsCoverage.startDate} to{" "}
-            {sampleAnalyticsCoverage.endDate}. Both dates are included. Comparisons
-            use the preceding period of the same length.
+          <p id="analytics-date-help" className="text-xs text-muted-foreground">
+            Both dates are included. Choose up to 366 days ending today or earlier.
+            Comparisons use the preceding period of the same length.
           </p>
           {dateError && (
             <p
@@ -218,44 +272,73 @@ export default function AnalyticsView() {
         </form>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <HomeStatCardComponent
-          label="Net sales"
-          value={money.format(summary.netSales / 100)}
-          note={
-            previousSummary
-              ? `Compared to ${money.format(previousSummary.netSales / 100)} ${comparisonLabel}`
-              : noComparisonNote
-          }
-        />
-        <HomeStatCardComponent
-          label="Average ticket"
-          value={money.format(summary.averageTicket / 100)}
-          note={
-            previousSummary
-              ? `Compared to ${money.format(previousSummary.averageTicket / 100)} ${comparisonLabel}`
-              : noComparisonNote
-          }
-        />
-        <HomeStatCardComponent
-          label="Total orders"
-          value={summary.totalOrders.toLocaleString("en-US")}
-          note={
-            previousSummary
-              ? `Compared to ${previousSummary.totalOrders.toLocaleString("en-US")} ${comparisonLabel}`
-              : noComparisonNote
-          }
-        />
-      </div>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <SalesChartComponent
-          range={selectedRange}
-          periodLabel={periodLabel}
-          salesData={salesData}
-          covers={summary.covers}
-        />
-        <MenuPerformanceCardComponent menuPerformance={menuPerformance} />
-      </div>
-    </div>
+      {loading && (
+        <p role="status" className="text-sm text-muted-foreground">
+          Loading Analytics…
+        </p>
+      )}
+      {loadError && (
+        <div className="space-y-3">
+          <p role="alert" className="text-sm text-destructive">{loadError}</p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setRefreshCount((count) => count + 1)}
+          >
+            Retry Analytics
+          </Button>
+        </div>
+      )}
+      {analyticsData && (
+        <>
+          <p className="text-sm text-muted-foreground">{periodLabel}</p>
+          {analyticsData.summary.totalOrders === 0 && (
+            <p role="status" className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+              No payments recorded for this period.
+            </p>
+          )}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <HomeStatCardComponent
+              label="Net sales"
+              value={money.format(analyticsData.summary.netSales / 100)}
+              note={
+                analyticsData.previousSummary
+                  ? `Compared to ${money.format(analyticsData.previousSummary.netSales / 100)} ${comparisonLabel}`
+                  : noComparisonNote
+              }
+            />
+            <HomeStatCardComponent
+              label="Average ticket"
+              value={money.format(analyticsData.summary.averageTicket / 100)}
+              note={
+                analyticsData.previousSummary
+                  ? `Compared to ${money.format(analyticsData.previousSummary.averageTicket / 100)} ${comparisonLabel}`
+                  : noComparisonNote
+              }
+            />
+            <HomeStatCardComponent
+              label="Total orders"
+              value={analyticsData.summary.totalOrders.toLocaleString("en-US")}
+              note={
+                analyticsData.previousSummary
+                  ? `Compared to ${analyticsData.previousSummary.totalOrders.toLocaleString("en-US")} ${comparisonLabel}`
+                  : noComparisonNote
+              }
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <SalesChartComponent
+              range={selectedRange}
+              periodLabel={periodLabel}
+              salesData={analyticsData.salesData}
+              covers={analyticsData.summary.covers}
+            />
+            <MenuPerformanceCardComponent
+              menuPerformance={analyticsData.menuPerformance}
+            />
+          </div>
+        </>
+      )}
+    </section>
   );
 }

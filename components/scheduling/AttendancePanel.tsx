@@ -15,14 +15,24 @@ export default function AttendancePanel({
   staff,
   entries,
   today,
+  currentUserId,
+  teamView = false,
   onClockIn,
   onClockOut,
+  disabled = false,
+  savingStaffId = null,
+  error = null,
 }: {
   staff: StaffMember[];
   entries: TimeEntry[];
   today: string;
-  onClockIn: (staffId: string) => void;
-  onClockOut: (staffId: string) => void;
+  currentUserId: string;
+  teamView?: boolean;
+  onClockIn?: () => void;
+  onClockOut?: () => void;
+  disabled?: boolean;
+  savingStaffId?: string | null;
+  error?: string | null;
 }) {
   const todayEntries = getAttendanceForDay(entries, today);
   const activeCount = staff.filter((person) =>
@@ -37,12 +47,13 @@ export default function AttendancePanel({
   return (
     <aside
       aria-labelledby="attendance-heading"
+      aria-busy={savingStaffId !== null}
       className="min-w-0 rounded-xl border bg-card text-card-foreground"
     >
       <header className="space-y-3 border-b p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 id="attendance-heading" className="font-semibold">
-            Attendance today
+            {teamView ? "Attendance today" : "My attendance"}
           </h2>
           <span
             role="status"
@@ -56,12 +67,19 @@ export default function AttendancePanel({
         </p>
       </header>
 
+      {error && (
+        <p role="alert" className="border-b p-4 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+
       <ul className="divide-y">
         {staff.map((person) => {
           // Include active entries from previous dates, including overnight work.
           const active = getActiveTimeEntry(entries, person.id);
           const completed = todayEntries.find(
-            (entry) => entry.staffId === person.id && entry.clockedOutAt !== null,
+            (entry) =>
+              entry.staffId === person.id && entry.clockedOutAt !== null,
           );
           return (
             <li key={person.id} className="space-y-3 p-4">
@@ -70,6 +88,7 @@ export default function AttendancePanel({
                   <p className="text-sm font-medium">{person.name}</p>
                   <p className="text-xs text-muted-foreground capitalize">
                     {person.role}
+                    {person.isActive === false && " · Inactive"}
                   </p>
                 </div>
                 <span
@@ -90,17 +109,36 @@ export default function AttendancePanel({
                     ? `Last out at ${displayTime(completed.clockedOutAt)}`
                     : "No attendance recorded today"}
               </p>
-              <Button
-                type="button"
-                variant={active ? "outline" : "secondary"}
-                className="w-full"
-                aria-label={`${active ? "Clock out" : "Clock in"} ${person.name}`}
-                onClick={() =>
-                  active ? onClockOut(person.id) : onClockIn(person.id)
-                }
-              >
-                {active ? "Clock out" : "Clock in"}
-              </Button>
+              {person.id === currentUserId && (
+                <Button
+                  type="button"
+                  variant={active ? "outline" : "secondary"}
+                  className="w-full"
+                  aria-label={`${active ? "Clock out" : "Clock in"} ${person.name}`}
+                  disabled={
+                    disabled ||
+                    savingStaffId !== null ||
+                    !(active ? onClockOut : onClockIn) ||
+                    (!active && person.isActive === false)
+                  }
+                  title={
+                    !(active ? onClockOut : onClockIn)
+                      ? "Attendance is currently read-only."
+                      : undefined
+                  }
+                  onClick={() =>
+                    active ? onClockOut?.() : onClockIn?.()
+                  }
+                >
+                  {savingStaffId === person.id
+                    ? active
+                      ? "Clocking out…"
+                      : "Clocking in…"
+                    : active
+                      ? "Clock out"
+                      : "Clock in"}
+                </Button>
+              )}
             </li>
           );
         })}
