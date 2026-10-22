@@ -8,13 +8,6 @@ import { isAuthenticated } from "@/lib/auth/jwt";
 // GET /api/floor-plans - List all floor tables
 export async function GET() {
   try {
-    if (!(await isAuthenticated())) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
     const allTables = await db.select().from(floorTables);
     return NextResponse.json({ success: true, tables: allTables });
   } catch (error: any) {
