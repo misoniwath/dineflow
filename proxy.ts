@@ -13,16 +13,25 @@ const ROUTE_ROLES: { prefix: string; allowedRoles: Role[] }[] = [
   // Add other guarded routes here as needed
 ];
 
+// Match "/order" and "/order/..." but NOT "/orders" or "/order-history"
+const matchesPath = (pathname: string, base: string) =>
+  pathname === base || pathname.startsWith(base + "/");
+
 export async function proxy(request: NextRequest) {
   const token = request.cookies.get("auth_token")?.value;
   const { pathname } = request.nextUrl;
 
-  // 2. Define routes that are completely public (login, assets, api auth)
   const isPublicPath =
     pathname === "/login" ||
-    pathname.startsWith("/api/auth") ||
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon.ico");
+    pathname === "/favicon.ico" ||
+    matchesPath(pathname, "/api/auth");
+
+  // Add every API route the guest order page calls
+  const isGuestAllowedPath =
+    matchesPath(pathname, "/order") ||
+    matchesPath(pathname, "/api/floor-plans") ||
+    matchesPath(pathname, "/api/orders");
 
   if (isPublicPath) {
     if (pathname === "/login" && token) {
@@ -36,28 +45,23 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 3. Define routes that allow GUESTS
-  const isGuestAllowedPath = pathname.startsWith("/order");
-
   if (!token) {
-    if (isGuestAllowedPath) {
-      return NextResponse.next(); // Allow unauthenticated/guest users through
-    }
+    if (isGuestAllowedPath) return NextResponse.next();
 
-    // Otherwise, redirect to login
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("from", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // 4. Token exists, verify it and extract role payload
   try {
     const { payload } = await jwtVerify(token, secretKey);
     const userRole = payload.role as Role;
 
-    // 5. Check Role-Based Access Control (RBAC)
+    // Guest-allowed routes skip RBAC entirely
+    if (isGuestAllowedPath) return NextResponse.next();
+
     const matchingRoute = ROUTE_ROLES.find((r) =>
-      pathname.startsWith(r.prefix),
+      matchesPath(pathname, r.prefix),
     );
 
     if (matchingRoute && !matchingRoute.allowedRoles.includes(userRole)) {
@@ -66,18 +70,18 @@ export async function proxy(request: NextRequest) {
 
     return NextResponse.next();
   } catch {
-    const response = NextResponse.redirect(new URL("/login", request.url));
+    // Bad/expired token: guests still get through, just clear the cookie
+    const response = isGuestAllowedPath
+      ? NextResponse.next()
+      : NextResponse.redirect(new URL("/login", request.url));
     response.cookies.delete("auth_token");
     return response;
   }
 }
 
-// Configure which routes the middleware runs on
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for static files and public assets
-     */
-    "/((?!_next/static|_next/image|favicon.ico|public).*)",
+    // Skip static files and images
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|webp|gif|ico)$).*)",
   ],
 };
