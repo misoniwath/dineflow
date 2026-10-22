@@ -38,6 +38,7 @@ export type MenuItemPerformance = {
 
 export type AnalyticsDailyRecord = {
   date: string;
+  netSales?: number;
   totalOrders: number;
   covers: number;
   menuItems: MenuItemPerformance[];
@@ -45,6 +46,7 @@ export type AnalyticsDailyRecord = {
 };
 
 export type AnalyticsData = {
+  source: "payments" | "demo";
   range: AnalyticsDateRange;
   period: AnalyticsPeriod;
   comparisonPeriod: AnalyticsPeriod | null;
@@ -55,4 +57,16 @@ export type AnalyticsData = {
     bestPerforming: MenuItemPerformance[];
     needAttention: MenuItemPerformance[];
   };
+};
+
+export type AnalyticsReceipt = {
+  paidAt: string;
+  totalCents: number;
+  guestCount: number;
+  orderCount: number;
+  items: {
+    name: string;
+    quantity: number;
+    unitPriceCents: number;
+  }[];
 };

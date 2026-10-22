@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
 import AttendancePanel from "@/components/scheduling/AttendancePanel";
 import ShiftForm from "@/components/scheduling/ShiftForm";
 import { Button } from "@/components/ui/button";
@@ -13,28 +13,31 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  createShiftApi,
+  getScheduleApi,
+  recordAttendanceApi,
+} from "@/lib/api/scheduling";
+import {
   addCalendarDays,
-  clockIn,
-  clockOut,
-  deleteShift,
   formatRestaurantTime,
   formatScheduleDate,
   formatWeekRange,
   getRestaurantDate,
+  getActiveTimeEntry,
   getShiftsForDay,
   getWeekDates,
   getWeekStart,
-  saveShift,
 } from "@/lib/scheduling";
-import {
-  createSampleShifts,
-  createSampleTimeEntries,
-  sampleStaff,
-} from "@/lib/scheduling-samples";
-import { cn, uid } from "@/lib/utils";
-import type { Shift, StaffRole, TimeEntry } from "@/types/Scheduling";
+import { cn } from "@/lib/utils";
+import type {
+  AttendanceInput,
+  ScheduleData,
+  Shift,
+  StaffRole,
+} from "@/types/Scheduling";
 
 const roleLabels: Record<StaffRole, string> = {
+  staff: "Staff",
   server: "Server",
   host: "Host",
   kitchen: "Kitchen",
@@ -43,6 +46,7 @@ const roleLabels: Record<StaffRole, string> = {
 };
 
 const roleColors: Record<StaffRole, string> = {
+  staff: "border-zinc-500/25 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
   server: "border-blue-500/25 bg-blue-500/10 text-blue-700 dark:text-blue-300",
   host: "border-amber-500/25 bg-amber-500/10 text-amber-800 dark:text-amber-300",
   kitchen:
@@ -51,21 +55,34 @@ const roleColors: Record<StaffRole, string> = {
   owner: "border-zinc-500/25 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
 };
 
-type EditorState = { shift: Shift | null; staffId: string; date: string };
+type ScheduleResult = {
+  key: string;
+  data: ScheduleData | null;
+  error: string | null;
+};
 
 export default function SchedulingView({ initialNow }: { initialNow: string }) {
   const [now, setNow] = useState(initialNow);
   const [weekStart, setWeekStart] = useState(() =>
     getWeekStart(getRestaurantDate(initialNow)),
   );
-  const [shifts, setShifts] = useState<Shift[]>(() =>
-    createSampleShifts(initialNow),
+  const [refreshCount, setRefreshCount] = useState(0);
+  const [editor, setEditor] = useState<{
+    staffId: string;
+    date: string;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [attendanceSavingId, setAttendanceSavingId] = useState<string | null>(
+    null,
   );
-  const [entries, setEntries] = useState<TimeEntry[]>(() =>
-    createSampleTimeEntries(initialNow),
-  );
-  const [editor, setEditor] = useState<EditorState | null>(null);
+  const attendancePending = useRef(false);
+  const [attendanceError, setAttendanceError] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [result, setResult] = useState<ScheduleResult>({
+    key: "",
+    data: null,
+    error: null,
+  });
 
   useEffect(() => {
     const updateClock = () => setNow(new Date().toISOString());
@@ -79,65 +96,162 @@ export default function SchedulingView({ initialNow }: { initialNow: string }) {
 
   const today = getRestaurantDate(now);
   const days = getWeekDates(weekStart);
+  const requestKey = `${weekStart}:${today}:${refreshCount}`;
+  const loading = result.key !== requestKey;
+  const error = loading ? null : result.error;
+  const data = loading ? null : result.data;
+  const canManageSchedule = data?.canManageSchedule ?? false;
+  const staff = data?.staff ?? [];
+  const shifts = data?.shifts ?? [];
+  const entries = data?.entries ?? [];
+  const roles = [...new Set(staff.map((person) => person.role))];
+  const activeStaff = staff.filter((person) => person.isActive !== false);
+  const busy = saving || attendanceSavingId !== null;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+
+    void getScheduleApi(weekStart, controller.signal).then(
+      (schedule) => {
+        if (!cancelled) {
+          setResult({ key: requestKey, data: schedule, error: null });
+        }
+      },
+      (cause: unknown) => {
+        if (!cancelled) {
+          setResult({
+            key: requestKey,
+            data: null,
+            error:
+              cause instanceof Error
+                ? cause.message
+                : "Could not load scheduling data.",
+          });
+        }
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [weekStart, requestKey]);
 
   function openNewShift(staffId: string, date: string) {
-    setEditor({ shift: null, staffId, date });
+    if (!canManageSchedule) return;
+    setNotice("");
+    setEditor({ staffId, date });
   }
 
-  function handleSave(shift: Shift) {
-    setShifts((current) => saveShift(current, shift, sampleStaff));
-    setNotice(editor?.shift ? "Shift updated." : "Shift added.");
-    setEditor(null);
+  async function handleSave(shift: Shift) {
+    setSaving(true);
+    try {
+      const saved = await createShiftApi({
+        staffId: shift.staffId,
+        startsAt: shift.startsAt,
+        endsAt: shift.endsAt,
+        notes: shift.notes,
+      });
+      setEditor(null);
+      setNotice("Shift added.");
+      setWeekStart(getWeekStart(getRestaurantDate(saved.startsAt)));
+      setRefreshCount((count) => count + 1);
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function handleDelete(shiftId: string) {
-    setShifts((current) => deleteShift(current, shiftId));
-    setNotice("Shift deleted.");
-    setEditor(null);
-  }
+  async function handleAttendance(action: AttendanceInput["action"]) {
+    if (attendancePending.current || saving || loading || error || !data) return;
+    const staffId = data.currentUserId;
+    const active = getActiveTimeEntry(entries, staffId);
+    if (action === "clock-out" && !active) return;
 
-  function handleClockIn(staffId: string) {
-    const timestamp = new Date().toISOString();
-    const entry: TimeEntry = {
-      id: uid(),
-      staffId,
-      clockedInAt: timestamp,
-      clockedOutAt: null,
-    };
-    // Functional updates ensure repeated clicks cannot create two active entries.
-    setEntries((current) => clockIn(current, entry));
-    setNow(timestamp);
-  }
-
-  function handleClockOut(staffId: string) {
-    const timestamp = new Date().toISOString();
-    setEntries((current) => clockOut(current, staffId, timestamp));
-    setNow(timestamp);
+    const input: AttendanceInput =
+      action === "clock-in"
+        ? { action }
+        : { action, entryId: active!.id };
+    attendancePending.current = true;
+    setAttendanceSavingId(staffId);
+    setAttendanceError(null);
+    setNotice("");
+    try {
+      await recordAttendanceApi(input);
+      const name =
+        staff.find((person) => person.id === staffId)?.name ?? "Employee";
+      setNotice(`${name} clocked ${action === "clock-in" ? "in" : "out"}.`);
+      setRefreshCount((count) => count + 1);
+    } catch (cause) {
+      setAttendanceError(
+        cause instanceof Error ? cause.message : "Could not save attendance.",
+      );
+    } finally {
+      attendancePending.current = false;
+      setAttendanceSavingId(null);
+    }
   }
 
   return (
-    <section className="min-w-0 space-y-5" aria-labelledby="scheduling-heading">
+    <section
+      className="min-w-0 space-y-5"
+      aria-labelledby="scheduling-heading"
+      aria-busy={loading}
+    >
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-1">
           <h1 id="scheduling-heading" className="text-2xl font-semibold">
-            Scheduling
+            {data && !canManageSchedule ? "My schedule" : "Scheduling"}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Plan the week and track attendance.
+            {data && !canManageSchedule
+              ? "View your shifts and record your attendance."
+              : "Plan the week and track attendance."}
           </p>
         </div>
-        <Button
-          type="button"
-          onClick={() =>
-            openNewShift(
-              sampleStaff[0].id,
-              days.includes(today) ? today : weekStart,
-            )
-          }
-        >
-          <Plus aria-hidden="true" /> Add shift
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            aria-label="Refresh schedule"
+            disabled={loading || busy}
+            onClick={() => {
+              setAttendanceError(null);
+              setRefreshCount((count) => count + 1);
+            }}
+          >
+            <RefreshCw aria-hidden="true" />
+            Refresh
+          </Button>
+          {canManageSchedule && (
+            <Button
+              type="button"
+              disabled={
+                loading || busy || Boolean(error) || activeStaff.length === 0
+              }
+              onClick={() => {
+                const person = activeStaff[0];
+                if (person)
+                  openNewShift(
+                    person.id,
+                    days.includes(today) ? today : weekStart,
+                  );
+              }}
+            >
+              <Plus aria-hidden="true" /> Add shift
+            </Button>
+          )}
+        </div>
       </header>
+
+      <p role="status" className="min-h-5 text-sm text-muted-foreground">
+        {notice}
+      </p>
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
 
       <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="min-w-0 space-y-4">
@@ -151,6 +265,7 @@ export default function SchedulingView({ initialNow }: { initialNow: string }) {
                 variant="outline"
                 aria-label="Previous week"
                 size="icon"
+                disabled={busy}
                 onClick={() =>
                   setWeekStart((current) => addCalendarDays(current, -7))
                 }
@@ -160,6 +275,7 @@ export default function SchedulingView({ initialNow }: { initialNow: string }) {
               <Button
                 type="button"
                 variant="outline"
+                disabled={busy}
                 onClick={() => {
                   const timestamp = new Date().toISOString();
                   setNow(timestamp);
@@ -173,6 +289,7 @@ export default function SchedulingView({ initialNow }: { initialNow: string }) {
                 variant="outline"
                 aria-label="Next week"
                 size="icon"
+                disabled={busy}
                 onClick={() =>
                   setWeekStart((current) => addCalendarDays(current, 7))
                 }
@@ -183,7 +300,7 @@ export default function SchedulingView({ initialNow }: { initialNow: string }) {
           </div>
 
           <div className="flex flex-wrap gap-2" aria-label="Role color legend">
-            {(["server", "host", "kitchen", "manager"] as const).map((role) => (
+            {roles.map((role) => (
               <span
                 key={role}
                 className={cn(
@@ -204,7 +321,8 @@ export default function SchedulingView({ initialNow }: { initialNow: string }) {
           >
             <table className="w-full min-w-[1080px] border-collapse text-sm">
               <caption className="sr-only">
-                Employee shifts for {formatWeekRange(weekStart)}, Asia/Phnom_Penh
+                Employee shifts for {formatWeekRange(weekStart)},
+                Asia/Phnom_Penh
               </caption>
               <thead>
                 <tr className="border-b">
@@ -225,7 +343,11 @@ export default function SchedulingView({ initialNow }: { initialNow: string }) {
                       )}
                     >
                       <span className="block text-xs text-muted-foreground">
-                        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][index]}
+                        {
+                          ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][
+                            index
+                          ]
+                        }
                       </span>
                       <span
                         className={cn(
@@ -242,7 +364,23 @@ export default function SchedulingView({ initialNow }: { initialNow: string }) {
                 </tr>
               </thead>
               <tbody>
-                {sampleStaff.map((person) => (
+                {(loading || error || staff.length === 0) && (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="p-8 text-center text-muted-foreground"
+                    >
+                      {loading ? (
+                        <span role="status">Loading schedule…</span>
+                      ) : error ? (
+                        "Schedule unavailable. Refresh to try again."
+                      ) : (
+                        "No staff members found."
+                      )}
+                    </td>
+                  </tr>
+                )}
+                {staff.map((person) => (
                   <tr key={person.id} className="border-b last:border-b-0">
                     <th
                       scope="row"
@@ -251,10 +389,15 @@ export default function SchedulingView({ initialNow }: { initialNow: string }) {
                       <span className="block">{person.name}</span>
                       <span className="mt-1 block text-xs font-normal text-muted-foreground">
                         {roleLabels[person.role]}
+                        {person.isActive === false && " · Inactive"}
                       </span>
                     </th>
                     {days.map((date) => {
-                      const dayShifts = getShiftsForDay(shifts, person.id, date);
+                      const dayShifts = getShiftsForDay(
+                        shifts,
+                        person.id,
+                        date,
+                      );
                       return (
                         <td
                           key={date}
@@ -263,32 +406,35 @@ export default function SchedulingView({ initialNow }: { initialNow: string }) {
                             date === today && "bg-blue-500/5",
                           )}
                         >
-                          {dayShifts.length === 0 ? (
+                          {dayShifts.length === 0 && !canManageSchedule ? (
+                            <span className="flex min-h-24 items-center justify-center text-muted-foreground">
+                              —
+                            </span>
+                          ) : dayShifts.length === 0 ? (
                             <button
                               type="button"
+                              disabled={busy || person.isActive === false}
                               onClick={() => openNewShift(person.id, date)}
                               aria-label={`Add shift for ${person.name} on ${formatScheduleDate(date)}`}
-                              className="flex min-h-24 w-full items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+                              className="flex min-h-24 w-full items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <span aria-hidden="true">—</span>
                             </button>
                           ) : (
                             <div className="space-y-2">
                               {dayShifts.map((shift) => {
-                                const startDate = getRestaurantDate(shift.startsAt);
+                                const startDate = getRestaurantDate(
+                                  shift.startsAt,
+                                );
                                 const endDate = getRestaurantDate(shift.endsAt);
                                 const times = `${formatRestaurantTime(shift.startsAt)} – ${formatRestaurantTime(shift.endsAt)}`;
                                 return (
-                                  <button
+                                  <div
                                     key={shift.id}
-                                    type="button"
-                                    onClick={() =>
-                                      setEditor({ shift, staffId: person.id, date })
-                                    }
-                                    aria-label={`Edit ${person.name}'s shift, ${formatScheduleDate(startDate)} ${times}, ending ${formatScheduleDate(endDate)}`}
+                                    aria-label={`${person.name}'s shift, ${formatScheduleDate(startDate)} ${times}, ending ${formatScheduleDate(endDate)}`}
                                     title={shift.notes || undefined}
                                     className={cn(
-                                      "block w-full rounded-lg border px-2 py-2.5 text-left text-xs leading-5 transition-colors hover:brightness-95 focus-visible:outline-2 focus-visible:outline-ring",
+                                      "block w-full rounded-lg border px-2 py-2.5 text-left text-xs leading-5",
                                       roleColors[person.role],
                                     )}
                                   >
@@ -303,7 +449,7 @@ export default function SchedulingView({ initialNow }: { initialNow: string }) {
                                         · ends {formatScheduleDate(endDate)}
                                       </span>
                                     )}
-                                  </button>
+                                  </div>
                                 );
                               })}
                             </div>
@@ -317,47 +463,50 @@ export default function SchedulingView({ initialNow }: { initialNow: string }) {
             </table>
           </div>
           <p className="text-xs text-muted-foreground">
-            All dates and times use Asia/Phnom_Penh (UTC+07:00). Click a shift to
-            edit or an empty cell to add one.
-          </p>
-          <p role="status" className="min-h-5 text-sm text-muted-foreground">
-            {notice}
+            All dates and times use Asia/Phnom_Penh (UTC+07:00).
           </p>
         </div>
 
-        <AttendancePanel
-          staff={sampleStaff}
-          entries={entries}
-          today={today}
-          onClockIn={handleClockIn}
-          onClockOut={handleClockOut}
-        />
+        {data && (
+          <AttendancePanel
+            staff={staff}
+            entries={entries}
+            today={today}
+            currentUserId={data.currentUserId}
+            teamView={canManageSchedule}
+            disabled={saving}
+            savingStaffId={attendanceSavingId}
+            error={attendanceError}
+            onClockIn={() => void handleAttendance("clock-in")}
+            onClockOut={() => void handleAttendance("clock-out")}
+          />
+        )}
       </div>
 
       <Dialog
-        open={editor !== null}
+        open={editor !== null && canManageSchedule}
         onOpenChange={(open) => {
-          if (!open) setEditor(null);
+          if (!open && !saving) setEditor(null);
         }}
       >
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+        <DialogContent
+          showCloseButton={!saving}
+          className="max-h-[90dvh] overflow-y-auto sm:max-w-lg"
+        >
           <DialogHeader>
-            <DialogTitle>
-              {editor?.shift ? "Edit shift" : "Add shift"}
-            </DialogTitle>
+            <DialogTitle>Add shift</DialogTitle>
             <DialogDescription>
               All shift dates and times are in Asia/Phnom_Penh (UTC+07:00).
             </DialogDescription>
           </DialogHeader>
           {editor && (
             <ShiftForm
-              shift={editor.shift}
+              shift={null}
               defaultStaffId={editor.staffId}
               defaultDate={editor.date}
-              staff={sampleStaff}
+              staff={activeStaff}
               shifts={shifts}
               onSave={handleSave}
-              onDelete={handleDelete}
               onCancel={() => setEditor(null)}
             />
           )}

@@ -40,11 +40,18 @@ export default function SalesChartComponent({
   return (
     <Card className="min-w-0">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 border-b">
-        <CardTitle>
-          Sales — {range === "Custom" && periodLabel
-            ? periodLabel
-            : range.toLowerCase()}
-        </CardTitle>
+        <div className="space-y-1">
+          <CardTitle>
+            Sales — {range === "Custom" && periodLabel
+              ? periodLabel
+              : range.toLowerCase()}
+          </CardTitle>
+          {range === "This month" && (
+            <p className="text-xs text-muted-foreground">
+              Weekly totals · Monday–Sunday, through today
+            </p>
+          )}
+        </div>
         <Badge variant="secondary">{covers.toLocaleString("en-US")} covers</Badge>
       </CardHeader>
 

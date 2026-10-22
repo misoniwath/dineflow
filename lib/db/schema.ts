@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   integer,
+  jsonb,
   real,
   varchar,
   date,
@@ -14,6 +16,8 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { BillItem } from "@/types/Bill";
+import type { OrderInventoryDeduction } from "@/types/Order";
 
 /* ------------------------------------------------------------------ */
 /* Roles                                                               */
@@ -47,6 +51,67 @@ export const users = pgTable(
   },
   (t) => [uniqueIndex("users_email_unique").on(sql`lower(${t.email})`)],
 );
+/* ------------------------------------------------------------------ */
+/* Staff Scheduling                                                     */
+/* ------------------------------------------------------------------ */
+
+export const staffShifts = pgTable(
+  "staff_shifts",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    staffId: uuid("staff_id")
+      .notNull()
+      .references(() => users.id),
+    startsAt: timestamp("starts_at", {
+      withTimezone: true,
+    }).notNull(),
+    endsAt: timestamp("ends_at", {
+      withTimezone: true,
+    }).notNull(),
+    notes: text("notes").notNull().default(""),
+    ...timestamps,
+  },
+  (t) => [
+    index("staff_shifts_staff_start_idx").on(t.staffId, t.startsAt),
+    check(
+      "staff_shifts_time_order",
+      sql`${t.endsAt} > ${t.startsAt}`,
+    ),
+  ],
+);
+
+export const staffTimeEntries = pgTable(
+  "staff_time_entries",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    staffId: uuid("staff_id")
+      .notNull()
+      .references(() => users.id),
+    clockedInAt: timestamp("clocked_in_at", {
+      withTimezone: true,
+    })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+    clockedOutAt: timestamp("clocked_out_at", {
+      withTimezone: true,
+    }),
+  },
+  (t) => [
+    index("staff_time_entries_staff_in_idx").on(
+      t.staffId,
+      t.clockedInAt,
+    ),
+    uniqueIndex("staff_time_entries_one_open_idx")
+      .on(t.staffId)
+      .where(sql`${t.clockedOutAt} IS NULL`),
+    check(
+      "staff_time_entries_time_order",
+      sql`${t.clockedOutAt} IS NULL
+          OR ${t.clockedOutAt} >= ${t.clockedInAt}`,
+    ),
+  ],
+);
+
 
 /* ------------------------------------------------------------------ */
 /* Menu Items                                                          */
@@ -146,6 +211,11 @@ export const orders = pgTable(
     id: uuid().primaryKey().defaultRandom(),
     tableNumber: integer("table_number").notNull(),
     status: orderStatusEnum().notNull().default("pending"),
+    // NULL identifies older orders whose actual stock deductions are unknown.
+    inventoryDeductions: jsonb("inventory_deductions").$type<OrderInventoryDeduction[]>(),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelledBy: uuid("cancelled_by").references(() => users.id),
+    cancelReason: text("cancel_reason"),
     ...timestamps,
   },
   (t) => [index("orders_table_number_idx").on(t.tableNumber)],
@@ -166,6 +236,32 @@ export const orderItems = pgTable(
     ...timestamps,
   },
   (t) => [index("menu_order_items_idx").on(t.orderId)],
+);
+
+/* ------------------------------------------------------------------ */
+/* Bill payments                                                       */
+/* ------------------------------------------------------------------ */
+export const billPayments = pgTable("bill_payments", {
+  id: uuid().primaryKey().defaultRandom(),
+  tableNumber: integer("table_number").notNull(),
+  totalCents: integer("total_cents").notNull(),
+  guestCount: integer("guest_count").notNull(),
+  items: jsonb("items").$type<BillItem[]>().notNull(),
+  paidAt: timestamp("paid_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// An order can belong to only one full payment, including concurrent requests.
+export const billPaymentOrders = pgTable(
+  "bill_payment_orders",
+  {
+    orderId: uuid("order_id")
+      .primaryKey()
+      .references(() => orders.id),
+    paymentId: uuid("payment_id")
+      .notNull()
+      .references(() => billPayments.id),
+  },
+  (t) => [index("bill_payment_orders_payment_idx").on(t.paymentId)],
 );
 
 /* ------------------------------------------------------------------ */

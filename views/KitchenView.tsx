@@ -4,85 +4,9 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useOrder } from "@/stores/OrderStore";
 import type { KitchenTicket } from "@/types/KitchenTicket";
-
-// Demo timestamps are relative to module load. API tickets will supply these.
-const sampleTime = Date.now();
-
-function placedAgo(minutes: number, seconds = 0) {
-  return new Date(sampleTime - (minutes * 60 + seconds) * 1000).toISOString();
-}
-
-const sampleTickets: KitchenTicket[] = [
-  {
-    id: "ticket-1",
-    tableNumber: 5,
-    station: "Pizza / Salad",
-    createdAt: placedAgo(49, 39),
-    status: "pending",
-    items: [
-      { id: "item-1", name: "Margherita Pizza", quantity: 2 },
-      { id: "item-2", name: "Caesar Salad", quantity: 1 },
-    ],
-    notes: "Please make one pizza gluten-free.",
-  },
-  {
-    id: "ticket-2",
-    tableNumber: 2,
-    station: "Grill",
-    createdAt: placedAgo(50, 4),
-    status: "preparing",
-    items: [
-      { id: "item-3", name: "Grilled Salmon", quantity: 2 },
-      { id: "item-4", name: "Roasted Vegetables", quantity: 1 },
-    ],
-    notes: "Serve the sauce on the side.",
-  },
-  {
-    id: "ticket-3",
-    tableNumber: 8,
-    station: "Grill",
-    createdAt: placedAgo(50, 34),
-    status: "ready",
-    items: [
-      { id: "item-5", name: "Cheeseburger", quantity: 1 },
-      { id: "item-6", name: "French Fries", quantity: 2 },
-    ],
-  },
-  {
-    id: "ticket-4",
-    tableNumber: 4,
-    station: "Grill",
-    createdAt: placedAgo(50, 4),
-    status: "preparing",
-    items: [
-      { id: "item-7", name: "Grilled salmon", quantity: 2 },
-      { id: "item-8", name: "Wild mushroom risotto", quantity: 1 },
-    ],
-  },
-  {
-    id: "ticket-5",
-    tableNumber: 9,
-    station: "Salad",
-    createdAt: placedAgo(52, 4),
-    status: "preparing",
-    items: [
-      { id: "item-9", name: "Burrata & heirloom tomato", quantity: 1 },
-      { id: "item-10", name: "Soup of the day", quantity: 1 },
-    ],
-  },
-  {
-    id: "ticket-6",
-    tableNumber: 7,
-    station: "Bar",
-    createdAt: placedAgo(50, 59),
-    status: "ready",
-    items: [
-      { id: "item-11", name: "IPA draft", quantity: 2 },
-      { id: "item-12", name: "House red, glass", quantity: 1 },
-    ],
-  },
-];
+import CancelOrderDialog from "@/components/kitchen/CancelOrderDialog";
 
 const columns = [
   {
@@ -104,7 +28,7 @@ const columns = [
     title: "Ready",
     borderClass: "border-l-[#46c08a]",
     actionLabel: "Mark served",
-    nextStatus: "served",
+    nextStatus: "completed",
   },
 ] as const;
 
@@ -123,9 +47,25 @@ function formatElapsedTime(seconds: number | null) {
 }
 
 export default function KitchenView() {
-  const [tickets, setTickets] = useState<KitchenTicket[]>(sampleTickets);
+  const {
+    kitchenTickets: tickets,
+    updateKitchenStatus,
+    cancelKitchenOrder,
+    loadData,
+    loading,
+    error,
+  } = useOrder();
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [cancellingTicket, setCancellingTicket] = useState<KitchenTicket | null>(null);
+  const [notice, setNotice] = useState("");
   // A shared clock updates every card without creating a timer per ticket.
   const [now, setNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    const initialLoad = window.setTimeout(() => void loadData(), 0);
+    return () => window.clearTimeout(initialLoad);
+  }, [loadData]);
 
   useEffect(() => {
     const updateClock = () => setNow(Date.now());
@@ -138,18 +78,42 @@ export default function KitchenView() {
     };
   }, []);
 
-  function updateTicketStatus(
+  async function updateTicketStatus(
     ticketId: string,
     nextStatus: KitchenTicket["status"],
   ) {
-    setTickets((current) =>
-      current.map((ticket) =>
-        ticket.id === ticketId ? { ...ticket, status: nextStatus } : ticket,
-      ),
-    );
+    if (savingId !== null) return;
+
+    setSavingId(ticketId);
+    setActionError(null);
+    setNotice("");
+
+    try {
+      await updateKitchenStatus(ticketId, nextStatus);
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Could not update order",
+      );
+    } finally {
+      setSavingId(null);
+    }
   }
 
-  const openCount = tickets.filter((ticket) => ticket.status !== "served").length;
+  async function confirmCancellation(reason: string) {
+    if (!cancellingTicket || savingId !== null) return;
+    setSavingId(cancellingTicket.id);
+    setActionError(null);
+    setNotice("");
+    try {
+      await cancelKitchenOrder(cancellingTicket.id, reason);
+      setNotice(`Order for table ${cancellingTicket.tableNumber} cancelled.`);
+      setCancellingTicket(null);
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  const openCount = tickets.length;
 
   return (
     <section className="min-h-[calc(100dvh-6rem)] space-y-6 rounded-xl bg-background p-4 text-foreground sm:p-6">
@@ -160,7 +124,26 @@ export default function KitchenView() {
         >
           {openCount} open
         </span>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={loading || savingId !== null}
+          onClick={() => {
+            setActionError(null);
+            void loadData();
+          }}
+        >
+          {loading ? "Loading orders…" : "Refresh orders"}
+        </Button>
       </header>
+
+      {notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
+
+      {(actionError || error) && (
+        <p role="alert" className="text-sm text-destructive">
+          {actionError || error}
+        </p>
+      )}
 
       {/* Render the status columns first, then the tickets belonging to each. */}
       <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-3">
@@ -205,8 +188,7 @@ export default function KitchenView() {
                           "dark:border-l-[#54a0e8]",
                         column.status === "preparing" &&
                           "dark:border-l-[#e3a83e]",
-                        column.status === "ready" &&
-                          "dark:border-l-[#46c08a]",
+                        column.status === "ready" && "dark:border-l-[#46c08a]",
                       )}
                     >
                       <header className="flex items-start justify-between gap-3">
@@ -217,14 +199,18 @@ export default function KitchenView() {
                           >
                             Table {ticket.tableNumber}
                           </h3>
-                          <p className="text-sm text-muted-foreground dark:text-[#687b87]">
-                            {ticket.station}
-                          </p>
+                          {ticket.station && (
+                            <p className="text-sm text-muted-foreground dark:text-[#687b87]">
+                              {ticket.station}
+                            </p>
+                          )}
                         </div>
 
                         <span
                           role="timer"
-                          aria-label={"Elapsed time for table " + ticket.tableNumber}
+                          aria-label={
+                            "Elapsed time for table " + ticket.tableNumber
+                          }
                           className={cn(
                             "shrink-0 font-mono text-3xl leading-none font-semibold tracking-tighter tabular-nums",
                             isOverdue
@@ -253,21 +239,41 @@ export default function KitchenView() {
                       <Button
                         type="button"
                         variant="outline"
+                        disabled={loading || savingId !== null}
                         aria-label={
-                          column.actionLabel + " for table " + ticket.tableNumber
+                          column.actionLabel +
+                          " for table " +
+                          ticket.tableNumber
                         }
                         onClick={() =>
                           updateTicketStatus(ticket.id, column.nextStatus)
                         }
                         className="h-11 w-full text-base font-normal text-muted-foreground dark:border-[#26323a] dark:bg-[#1a2228] dark:text-[#9eb0ba] dark:hover:bg-[#212b32]"
                       >
-                        {column.actionLabel}
+                        {savingId === ticket.id
+                          ? "Saving…"
+                          : column.actionLabel}
                       </Button>
+                      {ticket.status === "pending" && (
+                        <div className="space-y-2">
+                          <Button
+                            type="button" variant="destructive" className="w-full"
+                            disabled={loading || savingId !== null || !ticket.canCancel}
+                            aria-label={`Cancel order for table ${ticket.tableNumber}`}
+                            onClick={() => setCancellingTicket(ticket)}
+                          >
+                            Cancel order
+                          </Button>
+                          {!ticket.canCancel && ticket.cancellationBlockReason && (
+                            <p className="text-xs text-muted-foreground">{ticket.cancellationBlockReason}</p>
+                          )}
+                        </div>
+                      )}
                     </article>
                   );
                 })}
 
-                {columnTickets.length === 0 && (
+                {columnTickets.length === 0 && !loading && !error && (
                   <p className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground dark:border-[#26323a] dark:text-[#687b87]">
                     No {column.title.toLowerCase()} tickets
                   </p>
@@ -277,6 +283,14 @@ export default function KitchenView() {
           );
         })}
       </div>
+      {cancellingTicket && (
+        <CancelOrderDialog
+          key={cancellingTicket.id}
+          ticket={cancellingTicket}
+          onClose={() => setCancellingTicket(null)}
+          onConfirm={confirmCancellation}
+        />
+      )}
     </section>
   );
 }

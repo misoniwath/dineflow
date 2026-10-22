@@ -1,10 +1,59 @@
 import type { Bill, BillItem } from "@/types/Bill";
 
 export function getBillTotalCents(items: BillItem[]) {
-  return items.reduce(
-    (total, item) => total + item.quantity * item.unitPriceCents,
-    0,
-  );
+  return items.reduce((total, item) => {
+    if (
+      !Number.isSafeInteger(item.quantity) ||
+      item.quantity < 1 ||
+      !Number.isSafeInteger(item.unitPriceCents) ||
+      item.unitPriceCents < 0
+    ) {
+      throw new RangeError(
+        "Bill quantities and prices must be valid integers.",
+      );
+    }
+    const nextTotal = total + item.quantity * item.unitPriceCents;
+    if (!Number.isSafeInteger(nextTotal)) {
+      throw new RangeError("The bill total is too large.");
+    }
+    return nextTotal;
+  }, 0);
+}
+
+export function combineUnpaidOrders(
+  orders: {
+    id: string;
+    tableNumber: number;
+    createdAt: string;
+    items: BillItem[];
+  }[],
+  guestCounts: Map<number, number> = new Map(),
+): Bill[] {
+  const bills = new Map<number, Bill>();
+  for (const order of orders) {
+    let bill = bills.get(order.tableNumber);
+    if (!bill) {
+      const guests = guestCounts.get(order.tableNumber) ?? 1;
+      bill = {
+        id: `table-${order.tableNumber}`,
+        orderIds: [],
+        tableNumber: order.tableNumber,
+        guestCount: Number.isSafeInteger(guests) && guests > 0 ? guests : 1,
+        status: "unpaid",
+        totalCents: 0,
+        createdAt: order.createdAt,
+        paidAt: null,
+        items: [],
+      };
+      bills.set(order.tableNumber, bill);
+    }
+    bill.orderIds.push(order.id);
+    bill.items.push(...order.items);
+    if (order.createdAt < bill.createdAt) bill.createdAt = order.createdAt;
+  }
+  return [...bills.values()]
+    .map((bill) => ({ ...bill, totalCents: getBillTotalCents(bill.items) }))
+    .sort((a, b) => a.tableNumber - b.tableNumber);
 }
 
 export function splitBillEvenly(totalCents: number, guestCount: number) {
@@ -32,6 +81,7 @@ export function getGuestBills(bill: Bill) {
 
   for (const item of bill.items) {
     if (
+      typeof item.guestNumber !== "number" ||
       !Number.isSafeInteger(item.guestNumber) ||
       item.guestNumber < 1 ||
       item.guestNumber > bill.guestCount

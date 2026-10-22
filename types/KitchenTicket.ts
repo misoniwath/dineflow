@@ -1,3 +1,5 @@
+import type { OrderStatus } from "@/types/Order";
+
 export type KitchenTicketItem = {
   id: string;
   name: string;
@@ -7,9 +9,11 @@ export type KitchenTicketItem = {
 export type KitchenTicket = {
   id: string;
   tableNumber: number;
-  station: string;
+  station?: string;
   createdAt: string;
-  status: "pending" | "preparing" | "ready" | "served";
+  status: OrderStatus;
+  canCancel: boolean;
+  cancellationBlockReason: string | null;
   items: KitchenTicketItem[];
   notes?: string;
 };
