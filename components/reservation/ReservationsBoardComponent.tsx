@@ -361,30 +361,31 @@ export default function ReservationsBoardComponent({
 
       {/* Cancel dialog */}
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-full">
           <DialogHeader>
-            <DialogTitle>
-              Cancel {cancelling?.name}&apos;s reservation?
-            </DialogTitle>
+            <DialogTitle>Cancel {cancelling?.name}'s reservation?</DialogTitle>
             <DialogDescription>
               The table is released on the floor plan. Use no-show if the guests
-              didn&apos;t arrive.
+              didn't arrive.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <DialogClose render={<Button type="button" variant="outline" />}>
-              Keep reservation
-            </DialogClose>
-            <Button variant="outline" onClick={() => confirmCancel("no-show")}>
-              Mark as no-show
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => confirmCancel("cancelled")}
-            >
-              Cancel reservation
-            </Button>
-          </DialogFooter>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setCancelOpen(false)}
+          >
+            Keep reservation
+          </Button>
+          <Button variant="outline" onClick={() => confirmCancel("no-show")}>
+            Mark as no-show
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => confirmCancel("cancelled")}
+          >
+            Cancel reservation
+          </Button>
         </DialogContent>
       </Dialog>
     </div>

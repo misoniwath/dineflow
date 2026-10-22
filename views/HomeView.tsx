@@ -144,7 +144,7 @@ export default function HomeView() {
                   Tap a table to open its order.
                 </CardDescription>
               </div>
-              <Button variant="ghost" size="sm" asChild>
+              <Button variant="ghost" size="sm">
                 <Link href="/floor-plan" className="flex items-center">
                   <span>Floor plan</span>
                   <ArrowRight className="ml-1.5 size-4" />
@@ -158,7 +158,6 @@ export default function HomeView() {
                     key={n}
                     variant="ghost"
                     className={cn("h-14 tabular-nums", statusStyles[s])}
-                    asChild
                   >
                     <Link
                       href={`/order?table=${n}`}
@@ -193,7 +192,7 @@ export default function HomeView() {
                   Live tickets from the kitchen.
                 </CardDescription>
               </div>
-              <Button variant="ghost" size="sm" asChild>
+              <Button variant="ghost" size="sm">
                 <Link href="/kitchen" className="flex items-center">
                   <span>Open display </span>
                   <ArrowRight className="ml-1.5 size-4" />
@@ -274,7 +273,7 @@ export default function HomeView() {
                   Tonight&apos;s reservations
                 </CardTitle>
               </div>
-              <Button variant="ghost" size="sm" asChild>
+              <Button variant="ghost" size="sm">
                 <Link href="/reservations">View all</Link>
               </Button>
             </CardHeader>

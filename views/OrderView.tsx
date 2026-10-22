@@ -5,6 +5,7 @@ import { cn, money } from "@/lib/utils";
 
 import { useOrder } from "@/stores/OrderStore";
 import { useFloor } from "@/stores/FloorStore";
+import { useSearchParams } from "next/navigation";
 
 import {
   Minus,
@@ -32,6 +33,9 @@ import MenuCardComponent from "@/components/MenuCardComponent";
 /* Order view                                                          */
 /* ------------------------------------------------------------------ */
 export default function OrderView() {
+  const searchParams = useSearchParams();
+  const tableNumber = searchParams.get("table");
+
   const {
     menu,
     itemsById,
@@ -45,7 +49,7 @@ export default function OrderView() {
   const { tables, loading: isFloorLoading, loadData: loadFloor } = useFloor();
 
   const [category, setCategory] = useState<string>("");
-  const [table, setTable] = useState<number>(4);
+  const [table, setTable] = useState<number>(Number(tableNumber) || 1);
   const [viewMode, setViewMode] = useState<"table" | "card">("table");
   const [cartOpen, setCartOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
